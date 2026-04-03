@@ -118,15 +118,30 @@ router.get('/', async (_req: Request, res: Response) => {
     // Fetch notification channels
     const channelsResult = await pool.query('SELECT * FROM notification_channels ORDER BY created_at DESC');
 
+    // Fetch latest SSL check for each monitor
+    const sslData: Record<number, { issuer: string; subject: string; valid_from: string; valid_to: string; days_remaining: number; checked_at: string } | null> = {};
+    for (const m of result.rows) {
+      const sslResult = await pool.query(
+        'SELECT * FROM ssl_checks WHERE monitor_id = $1 ORDER BY checked_at DESC LIMIT 1',
+        [m.id]
+      );
+      sslData[m.id] = sslResult.rows.length > 0 ? sslResult.rows[0] : null;
+    }
+
+    // Fetch API keys
+    const apiKeysResult = await pool.query('SELECT id, name, created_at, last_used_at FROM api_keys ORDER BY created_at DESC');
+
     res.render('dashboard', {
       monitors: result.rows,
       stats: statsResult.rows[0],
       sparklines,
       miniSparklines,
       uptimeBars,
+      sslData,
       incidents: incidentsResult.rows,
       webhooks: webhooksResult.rows,
       channels: channelsResult.rows,
+      apiKeys: apiKeysResult.rows,
       allTags,
     });
   } catch (err) {
@@ -211,9 +226,20 @@ router.get('/status', async (_req: Request, res: Response) => {
       WHERE checked_at > NOW() - INTERVAL '24 hours'
     `);
 
+    // Fetch latest SSL check for each monitor
+    const sslData: Record<number, { days_remaining: number } | null> = {};
+    for (const m of result.rows) {
+      const sslResult = await pool.query(
+        'SELECT days_remaining FROM ssl_checks WHERE monitor_id = $1 ORDER BY checked_at DESC LIMIT 1',
+        [m.id]
+      );
+      sslData[m.id] = sslResult.rows.length > 0 ? sslResult.rows[0] : null;
+    }
+
     res.render('status', {
       monitors: result.rows,
       uptimeBars,
+      sslData,
       incidents: incidentsResult.rows,
       overallUptime: statsResult.rows[0].overall_uptime,
     });
@@ -275,6 +301,13 @@ router.get('/history/:id', async (req: Request, res: Response) => {
       [id]
     );
 
+    // Fetch latest SSL info
+    const sslResult = await pool.query(
+      'SELECT * FROM ssl_checks WHERE monitor_id = $1 ORDER BY checked_at DESC LIMIT 1',
+      [id]
+    );
+    const sslInfo = sslResult.rows.length > 0 ? sslResult.rows[0] : null;
+
     res.render('history', {
       monitor: monitorResult.rows[0],
       checks: checksResult.rows,
@@ -283,6 +316,7 @@ router.get('/history/:id', async (req: Request, res: Response) => {
       total,
       histogram,
       timeseries: timeseriesResult.rows,
+      sslInfo,
     });
   } catch (err) {
     console.error('History page error:', err);
