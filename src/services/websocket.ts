@@ -17,6 +17,14 @@ export function setupWebSocket(server: http.Server): void {
   console.log('WebSocket server ready on /ws');
 }
 
+export function getClientCount(): number {
+  return clients.size;
+}
+
+export function getWss(): WebSocketServer | null {
+  return wss;
+}
+
 export function broadcast(event: string, data: Record<string, unknown>): void {
   const message = JSON.stringify({ event, data, ts: Date.now() });
   for (const ws of clients) {

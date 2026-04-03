@@ -348,6 +348,12 @@ export async function startAllMonitors(): Promise<void> {
   }
 }
 
+export function stopAllMonitors(): void {
+  for (const [id] of timers) {
+    stopMonitor(id);
+  }
+}
+
 export function startMonitor(monitor: Monitor): void {
   stopMonitor(monitor.id);
   scheduleMonitor(monitor);
