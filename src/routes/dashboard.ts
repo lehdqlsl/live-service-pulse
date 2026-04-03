@@ -131,6 +131,23 @@ router.get('/', async (_req: Request, res: Response) => {
     // Fetch API keys
     const apiKeysResult = await pool.query('SELECT id, name, created_at, last_used_at FROM api_keys ORDER BY created_at DESC');
 
+    // Footer stats: total checks ever, uptime streak, last incident
+    const footerStatsResult = await pool.query(`
+      SELECT
+        (SELECT COUNT(*) FROM checks) AS total_checks_ever,
+        (SELECT MAX(started_at) FROM incidents) AS last_incident_at
+    `);
+    const footerStats = footerStatsResult.rows[0];
+
+    // Uptime streak: hours since last unresolved or most-recent incident
+    const streakResult = await pool.query(`
+      SELECT EXTRACT(EPOCH FROM (NOW() - COALESCE(
+        (SELECT COALESCE(resolved_at, started_at) FROM incidents ORDER BY started_at DESC LIMIT 1),
+        (SELECT MIN(checked_at) FROM checks)
+      ))) / 3600 AS streak_hours
+    `);
+    footerStats.streak_hours = Math.floor(parseFloat(streakResult.rows[0]?.streak_hours) || 0);
+
     res.render('dashboard', {
       monitors: result.rows,
       stats: statsResult.rows[0],
@@ -143,6 +160,7 @@ router.get('/', async (_req: Request, res: Response) => {
       channels: channelsResult.rows,
       apiKeys: apiKeysResult.rows,
       allTags,
+      footerStats,
     });
   } catch (err) {
     console.error('Dashboard error:', err);

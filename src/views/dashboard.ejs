@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Pulse — Uptime Monitor</title>
   <link rel="stylesheet" href="/style.css">
-  <meta http-equiv="refresh" content="30">
+  <link id="favicon" rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='8' fill='%2322c55e'/></svg>">
 </head>
 <body>
   <header>
@@ -20,6 +20,10 @@
         <a href="/reports" class="nav-link">Report</a>
       </nav>
       <div class="header-right">
+        <span class="sse-status" id="sseStatus" title="Live connection status">
+          <span class="sse-dot" id="sseDot"></span>
+          <span id="lastUpdated">Connected</span>
+        </span>
         <span class="real-time-clock" id="clock"></span>
       </div>
     </div>
@@ -147,6 +151,38 @@
                   </div>
                 </div>
               <% } %>
+              <!-- Response Time Chart (last 20) -->
+              <div class="rt-chart-container" id="rtChart-<%= m.id %>">
+                <div class="rt-chart-label">Response Time (last 20)</div>
+                <%
+                  var chartPoints = (sparklines[m.id] || []).slice(-20);
+                  var chartData = JSON.stringify(chartPoints);
+                %>
+                <svg viewBox="0 0 200 40" class="rt-chart" preserveAspectRatio="none" data-points="<%= chartData %>">
+                  <% if (chartPoints.length > 1) {
+                    var cMax = Math.max.apply(null, chartPoints);
+                    var cMin = Math.min.apply(null, chartPoints);
+                    var cRange = cMax - cMin || 1;
+                    var fillPts = chartPoints.map(function(v, i) {
+                      return (i / (chartPoints.length - 1) * 200).toFixed(1) + ',' + (38 - ((v - cMin) / cRange) * 34).toFixed(1);
+                    }).join(' ');
+                  %>
+                  <defs>
+                    <linearGradient id="chartGrad-<%= m.id %>" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stop-color="var(--accent)" stop-opacity="0.3"/>
+                      <stop offset="100%" stop-color="var(--accent)" stop-opacity="0.02"/>
+                    </linearGradient>
+                  </defs>
+                  <polygon fill="url(#chartGrad-<%= m.id %>)" points="0,40 <%= fillPts %> 200,40" />
+                  <polyline fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" points="<%= fillPts %>" />
+                  <% chartPoints.forEach(function(v, i) { %>
+                    <circle class="rt-dot" cx="<%= (i / (chartPoints.length - 1) * 200).toFixed(1) %>" cy="<%= (38 - ((v - cMin) / cRange) * 34).toFixed(1) %>" r="2.5" fill="var(--accent)" data-val="<%= v %>ms">
+                      <title><%= v %>ms</title>
+                    </circle>
+                  <% }); %>
+                  <% } %>
+                </svg>
+              </div>
               <!-- 24h Uptime Bar -->
               <% if (uptimeBars[m.id]) { %>
                 <div class="uptime-bar-container">
@@ -164,19 +200,19 @@
               <% } %>
               <div class="monitor-metrics">
                 <div class="metric">
-                  <span class="metric-value"><%= m.is_paused ? 'PAUSED' : (m.latest_is_up === true ? 'UP' : (m.latest_is_up === false ? 'DOWN' : '—')) %></span>
+                  <span class="metric-value" id="status-<%= m.id %>"><%= m.is_paused ? 'PAUSED' : (m.latest_is_up === true ? 'UP' : (m.latest_is_up === false ? 'DOWN' : '—')) %></span>
                   <span class="metric-label">Status</span>
                 </div>
                 <div class="metric">
-                  <span class="metric-value"><%= m.latest_response_time != null ? m.latest_response_time + 'ms' : '—' %></span>
+                  <span class="metric-value" id="response-<%= m.id %>"><%= m.latest_response_time != null ? m.latest_response_time + 'ms' : '—' %></span>
                   <span class="metric-label">Response</span>
                 </div>
                 <div class="metric">
-                  <span class="metric-value"><%= m.uptime_pct != null ? m.uptime_pct + '%' : '—' %></span>
+                  <span class="metric-value" id="uptime-<%= m.id %>"><%= m.uptime_pct != null ? m.uptime_pct + '%' : '—' %></span>
                   <span class="metric-label">Uptime</span>
                 </div>
                 <div class="metric">
-                  <span class="metric-value"><%= m.latest_status_code || '—' %></span>
+                  <span class="metric-value" id="code-<%= m.id %>"><%= m.latest_status_code || '—' %></span>
                   <span class="metric-label">Code</span>
                 </div>
               </div>
@@ -313,7 +349,7 @@
   </main>
 
   <footer>
-    <p>Pulse v1.5.0 &middot; Auto-refreshes every 30s</p>
+    <p>Pulse v1.6.0 &middot; Live updates via SSE</p>
   </footer>
 
   <script>

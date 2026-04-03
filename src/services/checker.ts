@@ -1,7 +1,11 @@
 import http from 'http';
 import https from 'https';
 import { URL } from 'url';
+import { EventEmitter } from 'events';
 import pool from '../db';
+import { broadcast } from './websocket';
+
+export const checkerEvents = new EventEmitter();
 
 interface Monitor {
   id: number;
@@ -111,6 +115,21 @@ async function handleIncidents(monitor: Monitor, isUp: boolean, statusCode: numb
     } catch (err) {
       console.error(`Failed to create incident for monitor ${monitor.id}:`, err);
     }
+    const incDown = {
+      type: 'started',
+      monitorId: monitor.id,
+      monitorName: monitor.name,
+      monitorUrl: monitor.url,
+      startedAt: new Date().toISOString(),
+    };
+    broadcast('incident', incDown);
+    checkerEvents.emit('incident', incDown);
+    broadcast('status_change', {
+      monitorId: monitor.id,
+      isUp: false,
+      statusCode,
+      responseTime,
+    });
     fireWebhooks('down', monitor, statusCode, responseTime);
   }
 
@@ -125,6 +144,21 @@ async function handleIncidents(monitor: Monitor, isUp: boolean, statusCode: numb
     } catch (err) {
       console.error(`Failed to resolve incident for monitor ${monitor.id}:`, err);
     }
+    const incUp = {
+      type: 'resolved',
+      monitorId: monitor.id,
+      monitorName: monitor.name,
+      monitorUrl: monitor.url,
+      resolvedAt: new Date().toISOString(),
+    };
+    broadcast('incident', incUp);
+    checkerEvents.emit('incident', incUp);
+    broadcast('status_change', {
+      monitorId: monitor.id,
+      isUp: true,
+      statusCode,
+      responseTime,
+    });
     fireWebhooks('up', monitor, statusCode, responseTime);
   }
 }
@@ -167,6 +201,17 @@ async function checkUrl(monitor: Monitor): Promise<void> {
   } catch (err) {
     console.error(`Failed to store check for monitor ${monitor.id}:`, err);
   }
+
+  const checkData = {
+    monitorId: monitor.id,
+    monitorName: monitor.name,
+    isUp,
+    responseTime,
+    statusCode,
+    checkedAt: new Date().toISOString(),
+  };
+  broadcast('check', checkData);
+  checkerEvents.emit('check', checkData);
 
   await handleIncidents(monitor, isUp, statusCode, responseTime);
 }

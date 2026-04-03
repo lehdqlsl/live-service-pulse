@@ -1,8 +1,42 @@
 import { Router, Request, Response } from 'express';
 import pool from '../db';
-import { startMonitor, stopMonitor } from '../services/checker';
+import { startMonitor, stopMonitor, checkerEvents } from '../services/checker';
 
 const router = Router();
+
+// SSE endpoint for real-time updates
+router.get('/events', (req: Request, res: Response) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+
+  // Send initial keepalive
+  res.write(':ok\n\n');
+
+  const onCheck = (data: { monitorId: number; isUp: boolean; responseTime: number; statusCode: number | null; checkedAt: string }) => {
+    res.write(`event: check\ndata: ${JSON.stringify(data)}\n\n`);
+  };
+
+  const onIncident = (data: { type: string; monitorId: number; monitorName: string; monitorUrl: string; startedAt?: string; resolvedAt?: string }) => {
+    res.write(`event: incident\ndata: ${JSON.stringify(data)}\n\n`);
+  };
+
+  checkerEvents.on('check', onCheck);
+  checkerEvents.on('incident', onIncident);
+
+  // Keepalive every 15s
+  const keepalive = setInterval(() => {
+    res.write(':ping\n\n');
+  }, 15000);
+
+  req.on('close', () => {
+    clearInterval(keepalive);
+    checkerEvents.off('check', onCheck);
+    checkerEvents.off('incident', onIncident);
+  });
+});
 
 // POST /api/monitors - Add a URL to monitor
 router.post('/monitors', async (req: Request, res: Response) => {
