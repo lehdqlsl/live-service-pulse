@@ -1642,3 +1642,10 @@ footer {
 .incident-badge { padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
 .incident-badge.resolved { background: rgba(34,197,94,0.15); color: var(--green); }
 .incident-badge.ongoing { background: rgba(239,68,68,0.15); color: var(--red); }
+
+/* === Maintenance Badge === */
+.maintenance-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; background: rgba(59,130,246,0.15); color: #3b82f6; }
+.group-header { margin-top: 24px; margin-bottom: 12px; padding: 8px 16px; background: var(--bg-card); border-radius: var(--radius); display: flex; align-items: center; gap: 10px; }
+.group-color { width: 12px; height: 12px; border-radius: 50%; }
+.group-name { font-size: 16px; font-weight: 600; }
+.group-desc { font-size: 13px; color: var(--text-secondary); }

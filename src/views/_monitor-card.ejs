@@ -1,0 +1,84 @@
+<div class="monitor-card <%= m.is_paused ? 'paused' : (m.latest_is_up === true ? 'up' : (m.latest_is_up === false ? 'down' : 'pending')) %>" data-tags="<%= m.tags || '' %>" data-id="<%= m.id %>" data-name="<%= m.name %>" data-url="<%= m.url %>">
+  <div class="monitor-header">
+    <div class="monitor-status">
+      <input type="checkbox" class="monitor-checkbox" data-id="<%= m.id %>" title="Select">
+      <span class="status-indicator <%= m.is_paused ? 'pending' : (m.latest_is_up === true ? 'up' : (m.latest_is_up === false ? 'down' : 'pending')) %>"></span>
+      <h3><a href="/monitors/<%= m.id %>" style="color:inherit;text-decoration:none"><%= m.name %></a></h3>
+      <% if (m.is_paused) { %>
+        <span class="paused-badge">Paused</span>
+      <% } %>
+      <% if (maintenanceMonitorIds && maintenanceMonitorIds.indexOf(m.id) !== -1) { %>
+        <span class="maintenance-badge">🔧 Maintenance</span>
+      <% } %>
+    </div>
+    <div class="monitor-actions">
+      <% if (m.is_paused) { %>
+        <button class="resume-btn" data-id="<%= m.id %>" title="Resume">&#9654;</button>
+      <% } else { %>
+        <button class="pause-btn" data-id="<%= m.id %>" title="Pause">&#9646;&#9646;</button>
+      <% } %>
+      <button class="delete-btn" data-id="<%= m.id %>" title="Delete">&times;</button>
+    </div>
+  </div>
+  <div class="monitor-badges">
+    <% if (m.url.startsWith('https') && sslData[m.id]) { %>
+      <% var days = sslData[m.id].days_remaining; %>
+      <span class="ssl-badge <%= days > 30 ? 'ssl-green' : (days > 7 ? 'ssl-yellow' : 'ssl-red') %>">&#128274; SSL: <%= days %>d</span>
+    <% } %>
+    <% if (m.body_check_enabled) { %>
+      <span class="body-check-badge">Body Check</span>
+    <% } %>
+  </div>
+  <div class="monitor-url"><%= m.url %></div>
+  <% if (m.tags) { %>
+    <div class="tag-badges">
+      <% m.tags.split(',').map(function(t) { return t.trim(); }).filter(function(t) { return t; }).forEach(function(tag) { %>
+        <span class="tag-badge"><%= tag %></span>
+      <% }); %>
+    </div>
+  <% } %>
+  <% if (sparklines[m.id] && sparklines[m.id].length > 1) { %>
+    <div class="sparkline-container">
+      <% var points = sparklines[m.id]; var max = Math.max.apply(null, points); var min = Math.min.apply(null, points); var range = max - min || 1; %>
+      <svg viewBox="0 0 120 30" class="sparkline" preserveAspectRatio="none">
+        <polyline fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"
+          points="<%= points.map(function(v, i) { return (i / (points.length - 1) * 120).toFixed(1) + ',' + (30 - ((v - min) / range) * 26 - 2).toFixed(1); }).join(' ') %>" />
+      </svg>
+      <div class="sparkline-labels"><span><%= min %>ms</span><span><%= max %>ms</span></div>
+    </div>
+  <% } %>
+  <% if (uptimeBars[m.id]) { %>
+    <div class="uptime-bar-container">
+      <div class="uptime-bar-label">24h Uptime</div>
+      <div class="uptime-bar">
+        <% uptimeBars[m.id].forEach(function(bucket) { %>
+          <div class="uptime-segment <%= bucket.uptime === -1 ? 'no-data' : (bucket.uptime >= 99 ? 'good' : (bucket.uptime >= 50 ? 'degraded' : 'bad')) %>" title="<%= bucket.hour.slice(11) %>:00 — <%= bucket.uptime === -1 ? 'No data' : bucket.uptime + '%' %>"></div>
+        <% }); %>
+      </div>
+    </div>
+  <% } %>
+  <div class="monitor-metrics">
+    <div class="metric">
+      <span class="metric-value" id="status-<%= m.id %>"><%= m.is_paused ? 'PAUSED' : (m.latest_is_up === true ? 'UP' : (m.latest_is_up === false ? 'DOWN' : '—')) %></span>
+      <span class="metric-label">Status</span>
+    </div>
+    <div class="metric">
+      <span class="metric-value" id="response-<%= m.id %>"><%= m.latest_response_time != null ? m.latest_response_time + 'ms' : '—' %></span>
+      <span class="metric-label">Response</span>
+    </div>
+    <div class="metric">
+      <span class="metric-value" id="uptime-<%= m.id %>"><%= m.uptime_pct != null ? m.uptime_pct + '%' : '—' %></span>
+      <span class="metric-label">Uptime</span>
+    </div>
+    <div class="metric">
+      <span class="metric-value" id="code-<%= m.id %>"><%= m.latest_status_code || '—' %></span>
+      <span class="metric-label">Code</span>
+    </div>
+  </div>
+  <div class="monitor-footer">
+    <span>Every <%= m.interval_seconds %>s</span>
+    <a href="/monitors/<%= m.id %>" class="history-link">Details</a>
+    <a href="/history/<%= m.id %>" class="history-link">History</a>
+    <span><%= m.last_checked ? new Date(m.last_checked).toLocaleString() : 'Never' %></span>
+  </div>
+</div>
