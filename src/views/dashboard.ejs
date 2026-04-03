@@ -8,6 +8,9 @@
   <link id="favicon" rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='8' fill='%2322c55e'/></svg>">
 </head>
 <body>
+  <script>
+    (function(){var t=localStorage.getItem('pulse-theme');if(!t){t=window.matchMedia('(prefers-color-scheme:light)').matches?'light':'dark'}document.documentElement.setAttribute('data-theme',t)})();
+  </script>
   <header>
     <div class="header-content">
       <div class="logo">
@@ -21,6 +24,7 @@
         <a href="/metrics" class="nav-link" target="_blank">Metrics</a>
       </nav>
       <div class="header-right">
+        <button class="theme-toggle" id="themeToggle" title="Toggle theme"></button>
         <span class="sse-status" id="sseStatus" title="Live connection status">
           <span class="sse-dot" id="sseDot"></span>
           <span id="lastUpdated">Connected</span>
@@ -285,7 +289,7 @@
   </main>
 
   <footer>
-    <p>Pulse v2.0.0 &middot; Live updates via SSE</p>
+    <p>Pulse v2.1.0 &middot; Live updates via SSE</p>
   </footer>
 
   <script>
@@ -704,6 +708,18 @@
         }
       });
     });
+    // Theme toggle
+    (function(){
+      var btn = document.getElementById('themeToggle');
+      function updateBtn(){btn.textContent = document.documentElement.getAttribute('data-theme') === 'light' ? '\u2600\uFE0F' : '\uD83C\uDF19';}
+      updateBtn();
+      btn.addEventListener('click', function(){
+        var next = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+        document.documentElement.setAttribute('data-theme', next);
+        localStorage.setItem('pulse-theme', next);
+        updateBtn();
+      });
+    })();
   </script>
 </body>
 </html>

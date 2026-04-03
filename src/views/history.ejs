@@ -7,6 +7,9 @@
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
+  <script>
+    (function(){var t=localStorage.getItem('pulse-theme');if(!t){t=window.matchMedia('(prefers-color-scheme:light)').matches?'light':'dark'}document.documentElement.setAttribute('data-theme',t)})();
+  </script>
   <header>
     <div class="header-content">
       <div class="logo">
@@ -19,6 +22,7 @@
         <a href="/reports" class="nav-link">Report</a>
       </nav>
       <div class="header-right">
+        <button class="theme-toggle" id="themeToggle" title="Toggle theme"></button>
         <a href="/" class="back-link">&larr; Back</a>
       </div>
     </div>
@@ -191,7 +195,20 @@
   </main>
 
   <footer>
-    <p>Pulse v2.0.0</p>
+    <p>Pulse v2.1.0</p>
   </footer>
+  <script>
+    (function(){
+      var btn = document.getElementById('themeToggle');
+      function updateBtn(){btn.textContent = document.documentElement.getAttribute('data-theme') === 'light' ? '\u2600\uFE0F' : '\uD83C\uDF19';}
+      updateBtn();
+      btn.addEventListener('click', function(){
+        var next = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+        document.documentElement.setAttribute('data-theme', next);
+        localStorage.setItem('pulse-theme', next);
+        updateBtn();
+      });
+    })();
+  </script>
 </body>
 </html>

@@ -1,4 +1,4 @@
-# Pulse v2.0.0 — URL Uptime Monitor
+# Pulse v2.1.0 — URL Uptime Monitor
 
 A professional URL uptime monitoring dashboard built with Node.js, Express, TypeScript, and PostgreSQL.
 

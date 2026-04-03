@@ -8,6 +8,9 @@
   <meta http-equiv="refresh" content="30">
 </head>
 <body class="status-page">
+  <script>
+    (function(){var t=localStorage.getItem('pulse-theme');if(!t){t=window.matchMedia('(prefers-color-scheme:light)').matches?'light':'dark'}document.documentElement.setAttribute('data-theme',t)})();
+  </script>
   <header>
     <div class="header-content">
       <div class="logo">
@@ -15,6 +18,7 @@
         <h1>System Status</h1>
       </div>
       <div class="header-right">
+        <button class="theme-toggle" id="themeToggle" title="Toggle theme"></button>
         <span class="status-page-summary <%= parseFloat(overallUptime) >= 99 ? 'all-good' : 'degraded' %>">
           <% if (parseFloat(overallUptime) >= 99) { %>
             All Systems Operational
@@ -129,7 +133,20 @@
   </main>
 
   <footer>
-    <p>Powered by Pulse v2.0.0</p>
+    <p>Powered by Pulse v2.1.0</p>
   </footer>
+  <script>
+    (function(){
+      var btn = document.getElementById('themeToggle');
+      function updateBtn(){btn.textContent = document.documentElement.getAttribute('data-theme') === 'light' ? '\u2600\uFE0F' : '\uD83C\uDF19';}
+      updateBtn();
+      btn.addEventListener('click', function(){
+        var next = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+        document.documentElement.setAttribute('data-theme', next);
+        localStorage.setItem('pulse-theme', next);
+        updateBtn();
+      });
+    })();
+  </script>
 </body>
 </html>

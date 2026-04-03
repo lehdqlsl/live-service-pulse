@@ -92,7 +92,7 @@ app.get('/health', async (_req: Request, res: Response) => {
 
   res.json({
     status,
-    version: '2.0.0',
+    version: '2.1.0',
     uptime_seconds: Math.floor((Date.now() - startTime) / 1000),
     monitors: monitorStats,
     db: {
@@ -185,7 +185,7 @@ async function main() {
     setupWebSocket(server);
 
     server.listen(PORT, '0.0.0.0', () => {
-      console.log(`Pulse v2.0.0 running on port ${PORT}`);
+      console.log(`Pulse v2.1.0 running on port ${PORT}`);
     });
   } catch (err) {
     console.error('Failed to start:', err);
