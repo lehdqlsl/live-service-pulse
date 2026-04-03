@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pulse — <%= monitor.name %></title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header>
+    <div class="header-content">
+      <div class="logo">
+        <span class="pulse-dot"></span>
+        <h1>Pulse</h1>
+      </div>
+      <nav class="main-nav">
+        <a href="/" class="nav-link">Dashboard</a>
+        <a href="/status" class="nav-link">Status</a>
+        <a href="/reports" class="nav-link">Report</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <a href="/" class="back-link">&larr; Back to Dashboard</a>
+
+    <!-- Monitor Header -->
+    <section class="detail-header">
+      <div class="detail-status-row">
+        <span class="status-indicator large <%= monitor.is_paused ? 'paused' : (checks.length > 0 && checks[0].is_up ? 'up' : 'down') %>"></span>
+        <div>
+          <h2><%= monitor.name %></h2>
+          <div class="detail-url"><%= monitor.url %></div>
+        </div>
+        <div class="detail-badges">
+          <% if (monitor.is_paused) { %><span class="badge paused">Paused</span><% } %>
+          <% if (checks.length > 0) { %>
+            <span class="badge <%= checks[0].is_up ? 'up' : 'down' %>"><%= checks[0].is_up ? 'UP' : 'DOWN' %></span>
+          <% } %>
+          <% if (monitor.tags) { monitor.tags.split(',').filter(t => t.trim()).forEach(function(tag) { %>
+            <span class="tag-badge"><%= tag.trim() %></span>
+          <% }); } %>
+        </div>
+      </div>
+    </section>
+
+    <!-- Stats Row -->
+    <section class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-value"><%= stats.uptime_pct || '—' %><% if (stats.uptime_pct) { %>%<% } %></div>
+        <div class="stat-label">Uptime</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value"><%= stats.avg_response || '—' %><% if (stats.avg_response) { %><span class="stat-unit">ms</span><% } %></div>
+        <div class="stat-label">Avg Response</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value"><%= stats.p95_response || '—' %><% if (stats.p95_response) { %><span class="stat-unit">ms</span><% } %></div>
+        <div class="stat-label">P95 Response</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value"><%= stats.total_checks || 0 %></div>
+        <div class="stat-label">Total Checks</div>
+      </div>
+    </section>
+
+    <!-- Time Series Chart -->
+    <% if (timeseries.length > 1) { %>
+    <section class="detail-section">
+      <h3>Response Time (24h)</h3>
+      <div class="chart-container">
+        <% 
+          const maxMs = Math.max(...timeseries.map(t => t.response_time_ms || 0));
+          const minMs = Math.min(...timeseries.map(t => t.response_time_ms || 0));
+          const range = maxMs - minMs || 1;
+          const w = 800; const h = 200; const pad = 40;
+          const points = timeseries.map((t, i) => {
+            const x = pad + (i / (timeseries.length - 1)) * (w - 2 * pad);
+            const y = h - pad - ((t.response_time_ms - minMs) / range) * (h - 2 * pad);
+            return `${x},${y}`;
+          }).join(' ');
+        %>
+        <svg viewBox="0 0 <%= w %> <%= h %>" class="timeseries-chart">
+          <!-- Grid -->
+          <% for (let i = 0; i <= 4; i++) { const gy = pad + i * (h - 2*pad) / 4; %>
+            <line x1="<%= pad %>" y1="<%= gy %>" x2="<%= w-pad %>" y2="<%= gy %>" stroke="rgba(255,255,255,0.1)" />
+            <text x="<%= pad - 5 %>" y="<%= gy + 4 %>" text-anchor="end" fill="#8b8fa3" font-size="10"><%= Math.round(maxMs - i * range / 4) %>ms</text>
+          <% } %>
+          <!-- Line -->
+          <polyline points="<%= points %>" fill="none" stroke="#6366f1" stroke-width="2" />
+          <!-- Area -->
+          <polygon points="<%= pad %>,<%= h-pad %> <%= points %> <%= w-pad %>,<%= h-pad %>" fill="rgba(99,102,241,0.1)" />
+        </svg>
+      </div>
+    </section>
+    <% } %>
+
+    <!-- 24h Uptime Bar -->
+    <% if (uptimeBar.length > 0) { %>
+    <section class="detail-section">
+      <h3>24h Uptime</h3>
+      <div class="uptime-bar-large">
+        <% uptimeBar.forEach(function(b) { 
+          const color = b.uptime >= 100 ? 'var(--green)' : (b.uptime >= 50 ? 'var(--yellow)' : 'var(--red)');
+          const hour = new Date(b.hour).getHours();
+        %>
+          <div class="uptime-segment" style="background: <%= color %>" title="<%= hour %>:00 — <%= b.uptime %>%"></div>
+        <% }); %>
+      </div>
+    </section>
+    <% } %>
+
+    <!-- SSL Info -->
+    <% if (ssl) { %>
+    <section class="detail-section">
+      <h3>SSL Certificate</h3>
+      <div class="ssl-detail-grid">
+        <div><strong>Issuer:</strong> <%= ssl.issuer %></div>
+        <div><strong>Subject:</strong> <%= ssl.subject %></div>
+        <div><strong>Valid From:</strong> <%= new Date(ssl.valid_from).toLocaleDateString() %></div>
+        <div><strong>Valid To:</strong> <%= new Date(ssl.valid_to).toLocaleDateString() %></div>
+        <div>
+          <strong>Days Remaining:</strong>
+          <span class="ssl-badge <%= ssl.days_remaining > 30 ? 'safe' : (ssl.days_remaining > 7 ? 'warning' : 'danger') %>">
+            <%= ssl.days_remaining %> days
+          </span>
+        </div>
+      </div>
+    </section>
+    <% } %>
+
+    <!-- Configuration -->
+    <section class="detail-section">
+      <h3>Configuration</h3>
+      <form id="editForm" class="config-form">
+        <div class="config-grid">
+          <label>Name <input type="text" name="name" value="<%= monitor.name %>"></label>
+          <label>URL <input type="url" name="url" value="<%= monitor.url %>"></label>
+          <label>Interval (s) <input type="number" name="interval" value="<%= monitor.interval_seconds %>" min="10" max="3600"></label>
+          <label>Tags <input type="text" name="tags" value="<%= monitor.tags %>"></label>
+          <label>Max Retries <input type="number" name="max_retries" value="<%= monitor.max_retries %>" min="0" max="5"></label>
+          <label>Alert Threshold (ms) <input type="number" name="alert_threshold_ms" value="<%= monitor.alert_threshold_ms || '' %>"></label>
+          <label>Depends On
+            <select name="depends_on">
+              <option value="">None</option>
+              <% allMonitors.forEach(function(m) { %>
+                <option value="<%= m.id %>" <%= monitor.depends_on === m.id ? 'selected' : '' %>><%= m.name %></option>
+              <% }); %>
+            </select>
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" name="alert_enabled" <%= monitor.alert_enabled ? 'checked' : '' %>>
+            Alert on slow response
+          </label>
+        </div>
+        <button type="submit" class="btn">Save Changes</button>
+      </form>
+    </section>
+
+    <!-- Badge -->
+    <section class="detail-section">
+      <h3>Status Badge</h3>
+      <div class="badge-preview">
+        <img src="/badge/<%= monitor.id %>" alt="Status Badge">
+        <div class="badge-code">
+          <code>![Status](http://localhost:10041/badge/<%= monitor.id %>)</code>
+          <button class="btn btn-small" onclick="navigator.clipboard.writeText('![Status]('+location.origin+'/badge/<%= monitor.id %>')">Copy</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Recent Checks -->
+    <section class="detail-section">
+      <h3>Recent Checks <a href="/history/<%= monitor.id %>" class="section-link">Full History &rarr;</a></h3>
+      <div class="table-wrapper">
+        <table class="report-table">
+          <thead><tr><th>Time</th><th>Status</th><th>Code</th><th>Response</th><th>Retries</th></tr></thead>
+          <tbody>
+            <% checks.forEach(function(c) { %>
+              <tr>
+                <td><%= new Date(c.checked_at).toLocaleString() %></td>
+                <td><span class="status-indicator small <%= c.is_up ? 'up' : 'down' %>"></span> <%= c.is_up ? 'UP' : 'DOWN' %></td>
+                <td><%= c.status_code || '—' %></td>
+                <td><%= c.response_time_ms %>ms</td>
+                <td><%= c.retry_count || 0 %></td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Incidents -->
+    <% if (incidents.length > 0) { %>
+    <section class="detail-section">
+      <h3>Recent Incidents</h3>
+      <% incidents.forEach(function(inc) { %>
+        <div class="incident-card">
+          <span class="incident-badge <%= inc.resolved_at ? 'resolved' : 'ongoing' %>">
+            <%= inc.resolved_at ? 'Resolved' : 'Ongoing' %>
+          </span>
+          Started: <%= new Date(inc.started_at).toLocaleString() %>
+          <% if (inc.resolved_at) { %> — Resolved: <%= new Date(inc.resolved_at).toLocaleString() %><% } %>
+          <% if (inc.duration_seconds) { %> (<%= Math.round(inc.duration_seconds / 60) %>min)<% } %>
+        </div>
+      <% }); %>
+    </section>
+    <% } %>
+
+    <!-- Delete -->
+    <section class="detail-section danger-zone">
+      <h3>Danger Zone</h3>
+      <button id="deleteBtn" class="btn btn-danger">Delete Monitor</button>
+    </section>
+  </main>
+
+  <footer><p>Pulse v1.8.0</p></footer>
+
+  <script>
+    document.getElementById('editForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const form = e.target;
+      const data = {
+        name: form.name.value,
+        url: form.url.value,
+        interval: parseInt(form.interval.value),
+        tags: form.tags.value,
+        max_retries: parseInt(form.max_retries.value) || 0,
+        alert_threshold_ms: parseInt(form.alert_threshold_ms.value) || null,
+        depends_on: form.depends_on.value ? parseInt(form.depends_on.value) : null,
+        alert_enabled: form.alert_enabled.checked,
+      };
+      try {
+        const res = await fetch('/api/monitors/<%= monitor.id %>', {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data),
+        });
+        if (res.ok) { alert('Saved!'); location.reload(); }
+        else { const err = await res.json(); alert(err.error || 'Failed'); }
+      } catch { alert('Network error'); }
+    });
+
+    document.getElementById('deleteBtn').addEventListener('click', async () => {
+      if (!confirm('Delete this monitor and all its data?')) return;
+      try {
+        const res = await fetch('/api/monitors/<%= monitor.id %>', { method: 'DELETE' });
+        if (res.ok) window.location.href = '/';
+        else alert('Failed to delete');
+      } catch { alert('Network error'); }
+    });
+  </script>
+</body>
+</html>

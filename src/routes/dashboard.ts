@@ -410,4 +410,106 @@ router.get('/reports', async (req: Request, res: Response) => {
   }
 });
 
+// GET /monitors/:id - Monitor detail page
+router.get('/monitors/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const monitorResult = await pool.query('SELECT * FROM monitors WHERE id = $1', [id]);
+    if (monitorResult.rows.length === 0) { res.status(404).send('Monitor not found'); return; }
+    const monitor = monitorResult.rows[0];
+
+    // Latest checks
+    const checksResult = await pool.query(
+      'SELECT * FROM checks WHERE monitor_id = $1 ORDER BY checked_at DESC LIMIT 50', [id]
+    );
+
+    // Time series (24h)
+    const timeseriesResult = await pool.query(
+      `SELECT response_time_ms, checked_at FROM checks WHERE monitor_id = $1 AND checked_at > NOW() - INTERVAL '24 hours' ORDER BY checked_at ASC`, [id]
+    );
+
+    // Uptime bar (24h hourly buckets)
+    const uptimeBarResult = await pool.query(`
+      SELECT date_trunc('hour', checked_at) AS hour,
+        ROUND(AVG(CASE WHEN is_up THEN 1 ELSE 0 END) * 100) AS uptime
+      FROM checks WHERE monitor_id = $1 AND checked_at > NOW() - INTERVAL '24 hours'
+      GROUP BY 1 ORDER BY 1
+    `, [id]);
+
+    // Stats
+    const statsResult = await pool.query(`
+      SELECT
+        COUNT(*)::int AS total_checks,
+        ROUND(AVG(CASE WHEN is_up THEN 1 ELSE 0 END) * 100, 2) AS uptime_pct,
+        ROUND(AVG(response_time_ms)) AS avg_response,
+        ROUND(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY response_time_ms)) AS p95_response
+      FROM checks WHERE monitor_id = $1
+    `, [id]);
+
+    // SSL
+    const sslResult = await pool.query(
+      'SELECT * FROM ssl_checks WHERE monitor_id = $1 ORDER BY checked_at DESC LIMIT 1', [id]
+    );
+
+    // Incidents
+    const incidentsResult = await pool.query(
+      'SELECT * FROM incidents WHERE monitor_id = $1 ORDER BY started_at DESC LIMIT 10', [id]
+    );
+
+    // All monitors (for depends_on dropdown)
+    const allMonitors = await pool.query('SELECT id, name FROM monitors WHERE id != $1 ORDER BY name', [id]);
+
+    res.render('monitor-detail', {
+      monitor,
+      checks: checksResult.rows,
+      timeseries: timeseriesResult.rows,
+      uptimeBar: uptimeBarResult.rows,
+      stats: statsResult.rows[0],
+      ssl: sslResult.rows[0] || null,
+      incidents: incidentsResult.rows,
+      allMonitors: allMonitors.rows,
+    });
+  } catch (err) {
+    console.error('Monitor detail error:', err);
+    res.status(500).send('Internal server error');
+  }
+});
+
+// GET /badge/:id - SVG status badge
+router.get('/badge/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query(`
+      SELECT m.name, c.is_up, s.uptime_pct
+      FROM monitors m
+      LEFT JOIN LATERAL (SELECT is_up FROM checks WHERE monitor_id = m.id ORDER BY checked_at DESC LIMIT 1) c ON true
+      LEFT JOIN LATERAL (SELECT ROUND(AVG(CASE WHEN is_up THEN 1 ELSE 0 END) * 100, 1) AS uptime_pct FROM checks WHERE monitor_id = m.id AND checked_at > NOW() - INTERVAL '24 hours') s ON true
+      WHERE m.id = $1
+    `, [id]);
+    if (result.rows.length === 0) { res.status(404).send('Not found'); return; }
+    const { name, is_up: isUp, uptime_pct: uptimePct } = result.rows[0];
+    const status = isUp ? 'UP' : 'DOWN';
+    const statusColor = isUp ? '#22c55e' : '#ef4444';
+    const uptimeText = uptimePct !== null ? `${uptimePct}%` : '—';
+    const labelWidth = name.length * 7 + 20;
+    const valueWidth = 80;
+    const totalWidth = labelWidth + valueWidth;
+
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${totalWidth}" height="20">
+      <rect width="${labelWidth}" height="20" fill="#333" rx="3"/>
+      <rect x="${labelWidth}" width="${valueWidth}" height="20" fill="${statusColor}" rx="3"/>
+      <rect x="${labelWidth}" width="4" height="20" fill="${statusColor}"/>
+      <text x="${labelWidth / 2}" y="14" text-anchor="middle" fill="#fff" font-family="Verdana,sans-serif" font-size="11">${name}</text>
+      <text x="${labelWidth + valueWidth / 2}" y="14" text-anchor="middle" fill="#fff" font-family="Verdana,sans-serif" font-size="11" font-weight="bold">${status} ${uptimeText}</text>
+    </svg>`;
+
+    res.setHeader('Content-Type', 'image/svg+xml');
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.send(svg);
+  } catch (err) {
+    console.error('Badge error:', err);
+    res.status(500).send('Error');
+  }
+});
+
 export default router;

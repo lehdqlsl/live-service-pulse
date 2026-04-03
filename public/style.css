@@ -1590,3 +1590,55 @@ footer {
 .rt-dot:hover {
   r: 4;
 }
+
+/* === Monitor Detail Page === */
+.back-link { display: inline-block; color: var(--accent); text-decoration: none; margin-bottom: 16px; font-size: 14px; }
+.back-link:hover { text-decoration: underline; }
+
+.detail-header { margin-bottom: 24px; }
+.detail-status-row { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.detail-url { color: var(--text-secondary); font-size: 14px; word-break: break-all; }
+.detail-badges { display: flex; gap: 8px; flex-wrap: wrap; margin-left: auto; }
+.status-indicator.large { width: 16px; height: 16px; }
+.badge { padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+.badge.up { background: rgba(34,197,94,0.15); color: var(--green); }
+.badge.down { background: rgba(239,68,68,0.15); color: var(--red); }
+.badge.paused { background: rgba(234,179,8,0.15); color: var(--yellow); }
+
+.detail-section { background: var(--bg-card); border-radius: var(--radius); padding: 20px; margin-bottom: 20px; }
+.detail-section h3 { margin-bottom: 16px; font-size: 16px; display: flex; justify-content: space-between; align-items: center; }
+.section-link { font-size: 13px; color: var(--accent); text-decoration: none; }
+.section-link:hover { text-decoration: underline; }
+
+.chart-container { overflow-x: auto; }
+.timeseries-chart { width: 100%; height: auto; max-height: 200px; }
+
+.uptime-bar-large { display: flex; gap: 2px; height: 32px; }
+.uptime-segment { flex: 1; border-radius: 4px; min-width: 8px; cursor: pointer; transition: transform 0.2s; }
+.uptime-segment:hover { transform: scaleY(1.2); }
+
+.ssl-detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.ssl-badge.safe { color: var(--green); }
+.ssl-badge.warning { color: var(--yellow); }
+.ssl-badge.danger { color: var(--red); font-weight: 700; }
+
+.config-form { }
+.config-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.config-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--text-secondary); }
+.config-grid input, .config-grid select { background: var(--bg-secondary); border: 1px solid var(--border); color: var(--text-primary); padding: 8px 12px; border-radius: 8px; font-size: 14px; }
+.btn { padding: 10px 20px; background: var(--accent); color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; }
+.btn:hover { opacity: 0.9; }
+.btn-small { padding: 6px 12px; font-size: 12px; }
+.btn-danger { background: var(--red); }
+
+.badge-preview { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.badge-code { display: flex; align-items: center; gap: 8px; }
+.badge-code code { background: var(--bg-secondary); padding: 6px 12px; border-radius: 6px; font-size: 12px; color: var(--text-secondary); }
+
+.danger-zone { border: 1px solid rgba(239,68,68,0.3); }
+.danger-zone h3 { color: var(--red); }
+
+.incident-card { padding: 12px; background: var(--bg-secondary); border-radius: 8px; margin-bottom: 8px; font-size: 14px; }
+.incident-badge { padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+.incident-badge.resolved { background: rgba(34,197,94,0.15); color: var(--green); }
+.incident-badge.ongoing { background: rgba(239,68,68,0.15); color: var(--red); }

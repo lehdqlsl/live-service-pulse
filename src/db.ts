@@ -70,9 +70,65 @@ export async function initDatabase(): Promise<void> {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
     `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS ssl_checks (
+        id SERIAL PRIMARY KEY,
+        monitor_id INTEGER NOT NULL REFERENCES monitors(id) ON DELETE CASCADE,
+        issuer TEXT,
+        subject TEXT,
+        valid_from TIMESTAMPTZ,
+        valid_to TIMESTAMPTZ,
+        days_remaining INTEGER,
+        checked_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_ssl_checks_monitor_id
+      ON ssl_checks (monitor_id, checked_at DESC);
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS api_keys (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        key_hash TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        last_used_at TIMESTAMPTZ
+      );
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      );
+    `);
+    // Insert default settings if not present
+    await client.query(`
+      INSERT INTO settings (key, value) VALUES ('checks_retention_days', '90')
+      ON CONFLICT (key) DO NOTHING
+    `);
     console.log('Database tables initialized');
   } finally {
     client.release();
+  }
+}
+
+export async function runRetentionCleanup(): Promise<void> {
+  try {
+    const result = await pool.query("SELECT value FROM settings WHERE key = 'checks_retention_days'");
+    const days = result.rows.length > 0 ? parseInt(result.rows[0].value) : 90;
+    if (days <= 0) return;
+
+    const checksResult = await pool.query(
+      `DELETE FROM checks WHERE checked_at < NOW() - INTERVAL '1 day' * $1`,
+      [days]
+    );
+    const sslResult = await pool.query(
+      `DELETE FROM ssl_checks WHERE checked_at < NOW() - INTERVAL '1 day' * $1`,
+      [days]
+    );
+    console.log(`Retention cleanup: removed ${checksResult.rowCount} checks, ${sslResult.rowCount} ssl_checks older than ${days} days`);
+  } catch (err) {
+    console.error('Retention cleanup error:', err);
   }
 }
 

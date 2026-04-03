@@ -691,4 +691,52 @@ router.get('/export/incidents', async (req: Request, res: Response) => {
   }
 });
 
+// GET /api/settings - Get all settings
+router.get('/settings', async (_req: Request, res: Response) => {
+  try {
+    const result = await pool.query('SELECT key, value FROM settings ORDER BY key');
+    const settings: Record<string, string> = {};
+    for (const row of result.rows) {
+      settings[row.key] = row.value;
+    }
+    res.json(settings);
+  } catch (err) {
+    console.error('Error fetching settings:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PATCH /api/settings - Update settings
+router.patch('/settings', async (req: Request, res: Response) => {
+  try {
+    const updates = req.body;
+    if (!updates || typeof updates !== 'object') {
+      res.status(400).json({ error: 'Request body must be an object of key-value pairs' });
+      return;
+    }
+    for (const [key, value] of Object.entries(updates)) {
+      if (key === 'checks_retention_days') {
+        const days = parseInt(value as string);
+        if (isNaN(days) || days < 1 || days > 3650) {
+          res.status(400).json({ error: 'checks_retention_days must be between 1 and 3650' });
+          return;
+        }
+      }
+      await pool.query(
+        'INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2',
+        [key, String(value)]
+      );
+    }
+    const result = await pool.query('SELECT key, value FROM settings ORDER BY key');
+    const settings: Record<string, string> = {};
+    for (const row of result.rows) {
+      settings[row.key] = row.value;
+    }
+    res.json(settings);
+  } catch (err) {
+    console.error('Error updating settings:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;
