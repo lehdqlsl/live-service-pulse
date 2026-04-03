@@ -18,6 +18,7 @@
         <a href="/" class="nav-link active">Dashboard</a>
         <a href="/status" class="nav-link">Status</a>
         <a href="/reports" class="nav-link">Report</a>
+        <a href="/metrics" class="nav-link" target="_blank">Metrics</a>
       </nav>
       <div class="header-right">
         <span class="sse-status" id="sseStatus" title="Live connection status">
@@ -61,9 +62,17 @@
         <div class="add-form-row">
           <label class="checkbox-label">
             <input type="checkbox" id="bodyCheckEnabled" name="body_check_enabled">
-            Enable body validation
+            Body validation
           </label>
-          <input type="text" id="expectedBodyRegex" name="expected_body_regex" placeholder="Expected regex (e.g. OK|success)" style="display:none;">
+          <input type="text" id="expectedBodyRegex" name="expected_body_regex" placeholder="Expected regex" style="display:none;">
+        </div>
+        <div class="add-form-row">
+          <input type="number" name="max_retries" placeholder="Retries (0-5)" value="0" min="0" max="5" style="width:120px;">
+          <input type="number" name="alert_threshold_ms" placeholder="Alert threshold (ms)" min="0" style="width:160px;">
+          <label class="checkbox-label">
+            <input type="checkbox" name="alert_enabled">
+            Alert on slow
+          </label>
         </div>
         <button type="submit">Add</button>
       </form>
@@ -349,7 +358,7 @@
   </main>
 
   <footer>
-    <p>Pulse v1.6.0 &middot; Live updates via SSE</p>
+    <p>Pulse v1.7.0 &middot; Live updates via SSE</p>
   </footer>
 
   <script>
@@ -576,6 +585,9 @@
         tags: form.tags.value || '',
         body_check_enabled: form.body_check_enabled.checked,
         expected_body_regex: form.expected_body_regex.value || '',
+        max_retries: parseInt(form.max_retries.value) || 0,
+        alert_threshold_ms: parseInt(form.alert_threshold_ms.value) || null,
+        alert_enabled: form.alert_enabled.checked,
       };
       try {
         const res = await fetch('/api/monitors', {

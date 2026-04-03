@@ -12,6 +12,10 @@ interface Monitor {
   name: string;
   url: string;
   interval_seconds: number;
+  depends_on?: number | null;
+  max_retries: number;
+  alert_threshold_ms?: number | null;
+  alert_enabled: boolean;
 }
 
 const timers: Map<number, NodeJS.Timeout> = new Map();
@@ -34,7 +38,7 @@ function postJSON(url: string, payload: string, headers: Record<string, string> 
   }
 }
 
-async function fireWebhooks(event: 'down' | 'up', monitor: Monitor, statusCode: number | null, responseTime: number): Promise<void> {
+async function fireWebhooks(event: 'down' | 'up' | 'slow', monitor: Monitor, statusCode: number | null, responseTime: number): Promise<void> {
   const timestamp = new Date().toISOString();
   const basePayload = {
     event,
@@ -62,8 +66,9 @@ async function fireWebhooks(event: 'down' | 'up', monitor: Monitor, statusCode: 
     for (const ch of result.rows) {
       const config = ch.config as { url: string };
       const isDown = event === 'down';
-      const statusText = isDown ? 'DOWN' : 'UP';
-      const color = isDown ? '#ef4444' : '#22c55e';
+      const isSlow = event === 'slow';
+      const statusText = isDown ? 'DOWN' : (isSlow ? 'SLOW' : 'UP');
+      const color = isDown ? '#ef4444' : (isSlow ? '#f59e0b' : '#22c55e');
 
       if (ch.type === 'webhook') {
         postJSON(config.url, JSON.stringify(basePayload));
@@ -81,7 +86,7 @@ async function fireWebhooks(event: 'down' | 'up', monitor: Monitor, statusCode: 
         const discordPayload = JSON.stringify({
           embeds: [{
             title: `${monitor.name} is ${statusText}`,
-            color: isDown ? 0xef4444 : 0x22c55e,
+            color: isDown ? 0xef4444 : (isSlow ? 0xf59e0b : 0x22c55e),
             fields: [
               { name: 'URL', value: monitor.url, inline: true },
               { name: 'Status Code', value: String(statusCode || 'N/A'), inline: true },
@@ -163,7 +168,8 @@ async function handleIncidents(monitor: Monitor, isUp: boolean, statusCode: numb
   }
 }
 
-async function checkUrl(monitor: Monitor): Promise<void> {
+// Single HTTP check attempt (no retry logic)
+async function singleCheck(monitor: Monitor): Promise<{ statusCode: number | null; isUp: boolean; responseTime: number }> {
   const start = Date.now();
   let statusCode: number | null = null;
   let isUp = false;
@@ -174,7 +180,7 @@ async function checkUrl(monitor: Monitor): Promise<void> {
 
     const result = await new Promise<{ statusCode: number }>((resolve, reject) => {
       const req = client.get(monitor.url, { timeout: 15000 }, (res) => {
-        res.resume(); // consume response
+        res.resume();
         resolve({ statusCode: res.statusCode || 0 });
       });
       req.on('error', reject);
@@ -191,12 +197,74 @@ async function checkUrl(monitor: Monitor): Promise<void> {
   }
 
   const responseTime = Date.now() - start;
+  return { statusCode, isUp, responseTime };
+}
+
+// Check if the parent monitor is down (for dependency skipping)
+async function isParentDown(dependsOn: number): Promise<boolean> {
+  try {
+    const result = await pool.query(
+      `SELECT is_up FROM checks WHERE monitor_id = $1 ORDER BY checked_at DESC LIMIT 1`,
+      [dependsOn]
+    );
+    if (result.rows.length === 0) return false;
+    return !result.rows[0].is_up;
+  } catch {
+    return false;
+  }
+}
+
+async function checkUrl(monitor: Monitor): Promise<void> {
+  // Dependency check: if parent is down, skip this monitor
+  if (monitor.depends_on) {
+    const parentDown = await isParentDown(monitor.depends_on);
+    if (parentDown) {
+      // Record a skipped check
+      try {
+        await pool.query(
+          `INSERT INTO checks (monitor_id, status_code, response_time_ms, is_up, checked_at, retry_count)
+           VALUES ($1, NULL, 0, false, NOW(), 0)`,
+          [monitor.id]
+        );
+      } catch (err) {
+        console.error(`Failed to store skipped check for monitor ${monitor.id}:`, err);
+      }
+
+      const checkData = {
+        monitorId: monitor.id,
+        monitorName: monitor.name,
+        isUp: false,
+        responseTime: 0,
+        statusCode: null,
+        checkedAt: new Date().toISOString(),
+        skipped: true,
+      };
+      broadcast('check', checkData);
+      checkerEvents.emit('check', checkData);
+      return;
+    }
+  }
+
+  // Perform check with retries
+  let lastResult = await singleCheck(monitor);
+  let retryCount = 0;
+
+  if (!lastResult.isUp && monitor.max_retries > 0) {
+    for (let i = 0; i < monitor.max_retries; i++) {
+      await new Promise(resolve => setTimeout(resolve, 5000)); // 5s delay between retries
+      lastResult = await singleCheck(monitor);
+      retryCount = i + 1;
+      if (lastResult.isUp) break;
+    }
+  }
+
+  const { statusCode, isUp, responseTime } = lastResult;
 
   try {
     await pool.query(
-      `INSERT INTO checks (monitor_id, status_code, response_time_ms, is_up, checked_at)
-       VALUES ($1, $2, $3, $4, NOW())`,
-      [monitor.id, statusCode, responseTime, isUp]
+      `INSERT INTO checks (monitor_id, status_code, response_time_ms, is_up, checked_at, retry_count)
+       VALUES ($1, $2, $3, $4, NOW(), $5)`,
+      [monitor.id, statusCode, responseTime, isUp, retryCount]
     );
   } catch (err) {
     console.error(`Failed to store check for monitor ${monitor.id}:`, err);
@@ -209,11 +277,17 @@ async function checkUrl(monitor: Monitor): Promise<void> {
     responseTime,
     statusCode,
     checkedAt: new Date().toISOString(),
+    retryCount,
   };
   broadcast('check', checkData);
   checkerEvents.emit('check', checkData);
 
   await handleIncidents(monitor, isUp, statusCode, responseTime);
+
+  // Response time alert
+  if (isUp && monitor.alert_enabled && monitor.alert_threshold_ms && responseTime > monitor.alert_threshold_ms) {
+    fireWebhooks('slow', monitor, statusCode, responseTime);
+  }
 }
 
 function scheduleMonitor(monitor: Monitor): void {
@@ -244,7 +318,7 @@ export async function startAllMonitors(): Promise<void> {
 
   try {
     const result = await pool.query(
-      'SELECT id, name, url, interval_seconds FROM monitors WHERE is_active = true AND is_paused = false'
+      'SELECT id, name, url, interval_seconds, depends_on, max_retries, alert_threshold_ms, alert_enabled FROM monitors WHERE is_active = true AND is_paused = false'
     );
     for (const monitor of result.rows) {
       scheduleMonitor(monitor);

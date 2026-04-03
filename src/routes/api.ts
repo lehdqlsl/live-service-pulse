@@ -41,7 +41,7 @@ router.get('/events', (req: Request, res: Response) => {
 // POST /api/monitors - Add a URL to monitor
 router.post('/monitors', async (req: Request, res: Response) => {
   try {
-    const { name, url, interval, tags } = req.body;
+    const { name, url, interval, tags, depends_on, max_retries, alert_threshold_ms, alert_enabled } = req.body;
 
     if (!name || !url) {
       res.status(400).json({ error: 'name and url are required' });
@@ -60,8 +60,9 @@ router.post('/monitors', async (req: Request, res: Response) => {
     }
 
     const result = await pool.query(
-      `INSERT INTO monitors (name, url, interval_seconds, tags) VALUES ($1, $2, $3, $4) RETURNING *`,
-      [name, url, intervalSeconds, tagsStr]
+      `INSERT INTO monitors (name, url, interval_seconds, tags, depends_on, max_retries, alert_threshold_ms, alert_enabled)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+      [name, url, intervalSeconds, tagsStr, depends_on || null, max_retries || 0, alert_threshold_ms || null, alert_enabled || false]
     );
 
     const monitor = result.rows[0];
@@ -70,6 +71,10 @@ router.post('/monitors', async (req: Request, res: Response) => {
       name: monitor.name,
       url: monitor.url,
       interval_seconds: monitor.interval_seconds,
+      depends_on: monitor.depends_on || null,
+      max_retries: monitor.max_retries || 0,
+      alert_threshold_ms: monitor.alert_threshold_ms || null,
+      alert_enabled: monitor.alert_enabled || false,
     });
 
     res.status(201).json(monitor);
@@ -83,10 +88,10 @@ router.post('/monitors', async (req: Request, res: Response) => {
 router.patch('/monitors/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { name, url, interval, tags } = req.body;
+    const { name, url, interval, tags, depends_on, max_retries, alert_threshold_ms, alert_enabled } = req.body;
 
     const fields: string[] = [];
-    const values: (string | number)[] = [];
+    const values: (string | number | boolean | null)[] = [];
     let idx = 1;
 
     if (name !== undefined) { fields.push(`name = $${idx++}`); values.push(name); }
@@ -96,6 +101,10 @@ router.patch('/monitors/:id', async (req: Request, res: Response) => {
     }
     if (interval !== undefined) { fields.push(`interval_seconds = $${idx++}`); values.push(interval); }
     if (tags !== undefined) { fields.push(`tags = $${idx++}`); values.push(tags); }
+    if (depends_on !== undefined) { fields.push(`depends_on = $${idx++}`); values.push(depends_on || null); }
+    if (max_retries !== undefined) { fields.push(`max_retries = $${idx++}`); values.push(max_retries); }
+    if (alert_threshold_ms !== undefined) { fields.push(`alert_threshold_ms = $${idx++}`); values.push(alert_threshold_ms || null); }
+    if (alert_enabled !== undefined) { fields.push(`alert_enabled = $${idx++}`); values.push(alert_enabled); }
 
     if (fields.length === 0) {
       res.status(400).json({ error: 'No fields to update' });
@@ -122,6 +131,10 @@ router.patch('/monitors/:id', async (req: Request, res: Response) => {
         name: monitor.name,
         url: monitor.url,
         interval_seconds: monitor.interval_seconds,
+        depends_on: monitor.depends_on || null,
+        max_retries: monitor.max_retries || 0,
+        alert_threshold_ms: monitor.alert_threshold_ms || null,
+        alert_enabled: monitor.alert_enabled || false,
       });
     }
 
@@ -246,6 +259,10 @@ router.patch('/monitors/:id/resume', async (req: Request, res: Response) => {
       name: monitor.name,
       url: monitor.url,
       interval_seconds: monitor.interval_seconds,
+      depends_on: monitor.depends_on || null,
+      max_retries: monitor.max_retries || 0,
+      alert_threshold_ms: monitor.alert_threshold_ms || null,
+      alert_enabled: monitor.alert_enabled || false,
     });
     res.json(monitor);
   } catch (err) {

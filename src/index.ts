@@ -4,6 +4,7 @@ import path from 'path';
 import { initDatabase } from './db';
 import apiRouter from './routes/api';
 import dashboardRouter from './routes/dashboard';
+import metricsRouter from './routes/metrics';
 import { startAllMonitors } from './services/checker';
 import { setupWebSocket } from './services/websocket';
 
@@ -22,12 +23,13 @@ app.set('views', path.join(__dirname, 'views'));
 
 // Health endpoint
 app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', version: '1.6.0' });
+  res.json({ status: 'ok', version: '1.7.0' });
 });
 
 // Routes
 app.use('/', dashboardRouter);
 app.use('/api', apiRouter);
+app.use('/metrics', metricsRouter);
 
 // Start
 async function main() {
@@ -37,7 +39,7 @@ async function main() {
     setupWebSocket(server);
 
     server.listen(PORT, '0.0.0.0', () => {
-      console.log(`Pulse v1.6.0 running on port ${PORT}`);
+      console.log(`Pulse v1.7.0 running on port ${PORT}`);
     });
   } catch (err) {
     console.error('Failed to start:', err);

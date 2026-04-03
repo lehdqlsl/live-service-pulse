@@ -21,6 +21,10 @@ export async function initDatabase(): Promise<void> {
     `);
     await client.query(`ALTER TABLE monitors ADD COLUMN IF NOT EXISTS tags TEXT NOT NULL DEFAULT ''`);
     await client.query(`ALTER TABLE monitors ADD COLUMN IF NOT EXISTS is_paused BOOLEAN NOT NULL DEFAULT false`);
+    await client.query(`ALTER TABLE monitors ADD COLUMN IF NOT EXISTS depends_on INTEGER REFERENCES monitors(id) ON DELETE SET NULL`);
+    await client.query(`ALTER TABLE monitors ADD COLUMN IF NOT EXISTS max_retries INTEGER NOT NULL DEFAULT 0`);
+    await client.query(`ALTER TABLE monitors ADD COLUMN IF NOT EXISTS alert_threshold_ms INTEGER`);
+    await client.query(`ALTER TABLE monitors ADD COLUMN IF NOT EXISTS alert_enabled BOOLEAN NOT NULL DEFAULT false`);
     await client.query(`
       CREATE TABLE IF NOT EXISTS checks (
         id SERIAL PRIMARY KEY,
@@ -35,6 +39,7 @@ export async function initDatabase(): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_checks_monitor_id_checked_at
       ON checks (monitor_id, checked_at DESC);
     `);
+    await client.query(`ALTER TABLE checks ADD COLUMN IF NOT EXISTS retry_count INTEGER NOT NULL DEFAULT 0`);
     await client.query(`
       CREATE TABLE IF NOT EXISTS incidents (
         id SERIAL PRIMARY KEY,
