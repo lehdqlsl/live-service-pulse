@@ -7,7 +7,7 @@ const router = Router();
 // POST /api/monitors - Add a URL to monitor
 router.post('/monitors', async (req: Request, res: Response) => {
   try {
-    const { name, url, interval } = req.body;
+    const { name, url, interval, tags } = req.body;
 
     if (!name || !url) {
       res.status(400).json({ error: 'name and url are required' });
@@ -15,6 +15,7 @@ router.post('/monitors', async (req: Request, res: Response) => {
     }
 
     const intervalSeconds = interval || 60;
+    const tagsStr = tags || '';
 
     // Validate URL
     try {
@@ -25,8 +26,8 @@ router.post('/monitors', async (req: Request, res: Response) => {
     }
 
     const result = await pool.query(
-      `INSERT INTO monitors (name, url, interval_seconds) VALUES ($1, $2, $3) RETURNING *`,
-      [name, url, intervalSeconds]
+      `INSERT INTO monitors (name, url, interval_seconds, tags) VALUES ($1, $2, $3, $4) RETURNING *`,
+      [name, url, intervalSeconds, tagsStr]
     );
 
     const monitor = result.rows[0];
@@ -40,6 +41,59 @@ router.post('/monitors', async (req: Request, res: Response) => {
     res.status(201).json(monitor);
   } catch (err) {
     console.error('Error creating monitor:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PATCH /api/monitors/:id - Update a monitor
+router.patch('/monitors/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { name, url, interval, tags } = req.body;
+
+    const fields: string[] = [];
+    const values: (string | number)[] = [];
+    let idx = 1;
+
+    if (name !== undefined) { fields.push(`name = $${idx++}`); values.push(name); }
+    if (url !== undefined) {
+      try { new URL(url); } catch { res.status(400).json({ error: 'Invalid URL' }); return; }
+      fields.push(`url = $${idx++}`); values.push(url);
+    }
+    if (interval !== undefined) { fields.push(`interval_seconds = $${idx++}`); values.push(interval); }
+    if (tags !== undefined) { fields.push(`tags = $${idx++}`); values.push(tags); }
+
+    if (fields.length === 0) {
+      res.status(400).json({ error: 'No fields to update' });
+      return;
+    }
+
+    values.push(parseInt(id));
+    const result = await pool.query(
+      `UPDATE monitors SET ${fields.join(', ')} WHERE id = $${idx} RETURNING *`,
+      values
+    );
+
+    if (result.rows.length === 0) {
+      res.status(404).json({ error: 'Monitor not found' });
+      return;
+    }
+
+    // Restart monitor if url or interval changed
+    if (url !== undefined || interval !== undefined) {
+      const monitor = result.rows[0];
+      stopMonitor(parseInt(id));
+      startMonitor({
+        id: monitor.id,
+        name: monitor.name,
+        url: monitor.url,
+        interval_seconds: monitor.interval_seconds,
+      });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error updating monitor:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -97,17 +151,66 @@ router.delete('/monitors/:id', async (req: Request, res: Response) => {
   }
 });
 
-// GET /api/monitors/:id/history - Get check history
+// GET /api/monitors/:id/history - Get check history (paginated)
 router.get('/monitors/:id/history', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const result = await pool.query(
-      `SELECT * FROM checks WHERE monitor_id = $1 ORDER BY checked_at DESC LIMIT 100`,
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit as string) || 50));
+    const offset = (page - 1) * limit;
+
+    const countResult = await pool.query(
+      'SELECT COUNT(*) AS total FROM checks WHERE monitor_id = $1',
       [id]
     );
-    res.json(result.rows);
+    const total = parseInt(countResult.rows[0].total);
+    const pages = Math.ceil(total / limit);
+
+    const result = await pool.query(
+      `SELECT * FROM checks WHERE monitor_id = $1 ORDER BY checked_at DESC LIMIT $2 OFFSET $3`,
+      [id, limit, offset]
+    );
+
+    res.json({ data: result.rows, total, page, pages });
   } catch (err) {
     console.error('Error fetching history:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/monitors/:id/uptime-bar - 24 hourly uptime buckets
+router.get('/monitors/:id/uptime-bar', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query(`
+      SELECT
+        date_trunc('hour', checked_at) AS hour,
+        COUNT(*) AS total,
+        SUM(CASE WHEN is_up THEN 1 ELSE 0 END) AS up_count
+      FROM checks
+      WHERE monitor_id = $1 AND checked_at > NOW() - INTERVAL '24 hours'
+      GROUP BY date_trunc('hour', checked_at)
+      ORDER BY hour ASC
+    `, [id]);
+
+    const buckets: { hour: string; uptime: number }[] = [];
+    const now = new Date();
+    for (let i = 23; i >= 0; i--) {
+      const h = new Date(now);
+      h.setMinutes(0, 0, 0);
+      h.setHours(h.getHours() - i);
+      const hourStr = h.toISOString().slice(0, 13);
+      const row = result.rows.find((r: { hour: Date }) => new Date(r.hour).toISOString().slice(0, 13) === hourStr);
+      if (row) {
+        buckets.push({ hour: hourStr, uptime: Math.round((parseInt(row.up_count) / parseInt(row.total)) * 100) });
+      } else {
+        buckets.push({ hour: hourStr, uptime: -1 });
+      }
+    }
+
+    res.json(buckets);
+  } catch (err) {
+    console.error('Error fetching uptime bar:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

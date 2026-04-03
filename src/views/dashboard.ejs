@@ -14,7 +14,10 @@
         <span class="pulse-dot"></span>
         <h1>Pulse</h1>
       </div>
-      <p class="tagline">Uptime Monitoring</p>
+      <div class="header-right">
+        <span class="real-time-clock" id="clock"></span>
+        <p class="tagline">Uptime Monitoring</p>
+      </div>
     </div>
   </header>
 
@@ -25,9 +28,9 @@
         <div class="stat-value"><%= stats.active_monitors || 0 %></div>
         <div class="stat-label">Active Monitors</div>
       </div>
-      <div class="stat-card">
-        <div class="stat-value"><%= stats.overall_uptime || '—' %><% if (stats.overall_uptime) { %>%<% } %></div>
-        <div class="stat-label">Uptime (24h)</div>
+      <div class="stat-card stat-card-uptime">
+        <div class="stat-value stat-value-large"><%= stats.overall_uptime || '—' %><% if (stats.overall_uptime) { %>%<% } %></div>
+        <div class="stat-label">Overall Uptime (24h)</div>
       </div>
       <div class="stat-card">
         <div class="stat-value"><%= stats.avg_response_time || '—' %><% if (stats.avg_response_time) { %><span class="stat-unit">ms</span><% } %></div>
@@ -40,15 +43,27 @@
     </section>
 
     <!-- Add Monitor Form -->
-    <section class="add-monitor">
-      <h2>Add Monitor</h2>
+    <section class="add-monitor" id="addMonitorSection">
+      <h2>Add Monitor <span class="shortcut-hint">(press <kbd>n</kbd>)</span></h2>
       <form id="addForm" class="add-form">
         <input type="text" name="name" placeholder="Name (e.g. Google)" required>
         <input type="url" name="url" placeholder="https://example.com" required>
         <input type="number" name="interval" placeholder="Interval (s)" value="60" min="10" max="3600">
+        <input type="text" name="tags" placeholder="Tags (comma-separated)">
         <button type="submit">Add</button>
       </form>
     </section>
+
+    <!-- Tag Filter Bar -->
+    <% if (allTags.length > 0) { %>
+      <section class="filter-bar">
+        <span class="filter-label">Filter by tag:</span>
+        <button class="tag-filter-btn active" data-tag="all">All</button>
+        <% allTags.forEach(function(tag) { %>
+          <button class="tag-filter-btn" data-tag="<%= tag %>"><%= tag %></button>
+        <% }); %>
+      </section>
+    <% } %>
 
     <!-- Monitors Table -->
     <section class="monitors-section">
@@ -60,7 +75,7 @@
       <% } else { %>
         <div class="monitors-grid">
           <% monitors.forEach(function(m) { %>
-            <div class="monitor-card <%= m.latest_is_up === true ? 'up' : (m.latest_is_up === false ? 'down' : 'pending') %>">
+            <div class="monitor-card <%= m.latest_is_up === true ? 'up' : (m.latest_is_up === false ? 'down' : 'pending') %>" data-tags="<%= m.tags || '' %>">
               <div class="monitor-header">
                 <div class="monitor-status">
                   <span class="status-indicator <%= m.latest_is_up === true ? 'up' : (m.latest_is_up === false ? 'down' : 'pending') %>"></span>
@@ -69,6 +84,13 @@
                 <button class="delete-btn" data-id="<%= m.id %>" title="Delete">&times;</button>
               </div>
               <div class="monitor-url"><%= m.url %></div>
+              <% if (m.tags) { %>
+                <div class="tag-badges">
+                  <% m.tags.split(',').map(function(t) { return t.trim(); }).filter(function(t) { return t; }).forEach(function(tag) { %>
+                    <span class="tag-badge"><%= tag %></span>
+                  <% }); %>
+                </div>
+              <% } %>
               <% if (sparklines[m.id] && sparklines[m.id].length > 1) { %>
                 <div class="sparkline-container">
                   <% var points = sparklines[m.id]; var max = Math.max.apply(null, points); var min = Math.min.apply(null, points); var range = max - min || 1; %>
@@ -85,6 +107,21 @@
                   <div class="sparkline-labels">
                     <span><%= min %>ms</span>
                     <span><%= max %>ms</span>
+                  </div>
+                </div>
+              <% } %>
+              <!-- 24h Uptime Bar -->
+              <% if (uptimeBars[m.id]) { %>
+                <div class="uptime-bar-container">
+                  <div class="uptime-bar-label">24h Uptime</div>
+                  <div class="uptime-bar">
+                    <% uptimeBars[m.id].forEach(function(bucket) { %>
+                      <div class="uptime-segment <%= bucket.uptime === -1 ? 'no-data' : (bucket.uptime >= 99 ? 'good' : (bucket.uptime >= 50 ? 'degraded' : 'bad')) %>" title="<%= bucket.hour.slice(11) %>:00 — <%= bucket.uptime === -1 ? 'No data' : bucket.uptime + '%' %>"></div>
+                    <% }); %>
+                  </div>
+                  <div class="uptime-bar-axis">
+                    <span>24h ago</span>
+                    <span>Now</span>
                   </div>
                 </div>
               <% } %>
@@ -108,6 +145,7 @@
               </div>
               <div class="monitor-footer">
                 <span>Every <%= m.interval_seconds %>s</span>
+                <a href="/history/<%= m.id %>" class="history-link">View History</a>
                 <span><%= m.last_checked ? new Date(m.last_checked).toLocaleString() : 'Never' %></span>
               </div>
             </div>
@@ -180,10 +218,47 @@
   </main>
 
   <footer>
-    <p>Pulse v1.1.0 &middot; Auto-refreshes every 30s</p>
+    <p>Pulse v1.2.0 &middot; Auto-refreshes every 30s</p>
   </footer>
 
   <script>
+    // Real-time clock
+    function updateClock() {
+      const now = new Date();
+      document.getElementById('clock').textContent = now.toLocaleTimeString();
+    }
+    updateClock();
+    setInterval(updateClock, 1000);
+
+    // Keyboard shortcut: 'n' to focus add form
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'n' && !e.ctrlKey && !e.metaKey && !e.altKey && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+        e.preventDefault();
+        var nameInput = document.querySelector('#addForm input[name="name"]');
+        if (nameInput) {
+          document.getElementById('addMonitorSection').scrollIntoView({ behavior: 'smooth' });
+          nameInput.focus();
+        }
+      }
+    });
+
+    // Tag filter
+    document.querySelectorAll('.tag-filter-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        document.querySelectorAll('.tag-filter-btn').forEach(function(b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+        var tag = btn.dataset.tag;
+        document.querySelectorAll('.monitor-card').forEach(function(card) {
+          if (tag === 'all') {
+            card.style.display = '';
+          } else {
+            var cardTags = (card.dataset.tags || '').split(',').map(function(t) { return t.trim(); });
+            card.style.display = cardTags.includes(tag) ? '' : 'none';
+          }
+        });
+      });
+    });
+
     document.getElementById('addForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const form = e.target;
@@ -191,6 +266,7 @@
         name: form.name.value,
         url: form.url.value,
         interval: parseInt(form.interval.value) || 60,
+        tags: form.tags.value || '',
       };
       try {
         const res = await fetch('/api/monitors', {

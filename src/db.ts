@@ -15,9 +15,11 @@ export async function initDatabase(): Promise<void> {
         url TEXT NOT NULL,
         interval_seconds INTEGER NOT NULL DEFAULT 60,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        is_active BOOLEAN NOT NULL DEFAULT true
+        is_active BOOLEAN NOT NULL DEFAULT true,
+        tags TEXT NOT NULL DEFAULT ''
       );
     `);
+    await client.query(`ALTER TABLE monitors ADD COLUMN IF NOT EXISTS tags TEXT NOT NULL DEFAULT ''`);
     await client.query(`
       CREATE TABLE IF NOT EXISTS checks (
         id SERIAL PRIMARY KEY,

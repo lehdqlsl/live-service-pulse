@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>History — <%= monitor.name %> — Pulse</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header>
+    <div class="header-content">
+      <div class="logo">
+        <span class="pulse-dot"></span>
+        <h1>Pulse</h1>
+      </div>
+      <p class="tagline"><a href="/" class="back-link">&larr; Dashboard</a></p>
+    </div>
+  </header>
+
+  <main>
+    <section class="history-header">
+      <h2>Check History: <%= monitor.name %></h2>
+      <p class="history-url"><%= monitor.url %></p>
+      <p class="history-summary"><%= total %> total checks</p>
+    </section>
+
+    <section class="history-table-section">
+      <table class="history-table">
+        <thead>
+          <tr>
+            <th>Timestamp</th>
+            <th>Status</th>
+            <th>Status Code</th>
+            <th>Response Time</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% checks.forEach(function(c) { %>
+            <tr class="<%= c.is_up ? 'row-up' : 'row-down' %>">
+              <td><%= new Date(c.checked_at).toLocaleString() %></td>
+              <td>
+                <span class="status-badge <%= c.is_up ? 'up' : 'down' %>">
+                  <%= c.is_up ? 'UP' : 'DOWN' %>
+                </span>
+              </td>
+              <td><%= c.status_code || '—' %></td>
+              <td><%= c.response_time_ms != null ? c.response_time_ms + 'ms' : '—' %></td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+
+      <% if (pages > 1) { %>
+        <div class="pagination">
+          <% if (page > 1) { %>
+            <a href="/history/<%= monitor.id %>?page=<%= page - 1 %>" class="page-link">&larr; Prev</a>
+          <% } %>
+          <span class="page-info">Page <%= page %> of <%= pages %></span>
+          <% if (page < pages) { %>
+            <a href="/history/<%= monitor.id %>?page=<%= page + 1 %>" class="page-link">Next &rarr;</a>
+          <% } %>
+        </div>
+      <% } %>
+    </section>
+  </main>
+
+  <footer>
+    <p>Pulse v1.2.0</p>
+  </footer>
+</body>
+</html>
