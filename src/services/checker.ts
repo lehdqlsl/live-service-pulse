@@ -153,7 +153,7 @@ export async function startAllMonitors(): Promise<void> {
 
   try {
     const result = await pool.query(
-      'SELECT id, name, url, interval_seconds FROM monitors WHERE is_active = true'
+      'SELECT id, name, url, interval_seconds FROM monitors WHERE is_active = true AND is_paused = false'
     );
     for (const monitor of result.rows) {
       scheduleMonitor(monitor);

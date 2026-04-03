@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>System Status — Pulse</title>
+  <link rel="stylesheet" href="/style.css">
+  <meta http-equiv="refresh" content="30">
+</head>
+<body class="status-page">
+  <header>
+    <div class="header-content">
+      <div class="logo">
+        <span class="pulse-dot"></span>
+        <h1>System Status</h1>
+      </div>
+      <div class="header-right">
+        <span class="status-page-summary <%= parseFloat(overallUptime) >= 99 ? 'all-good' : 'degraded' %>">
+          <% if (parseFloat(overallUptime) >= 99) { %>
+            All Systems Operational
+          <% } else if (overallUptime) { %>
+            Degraded Performance
+          <% } else { %>
+            No Data
+          <% } %>
+        </span>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- Overall uptime banner -->
+    <section class="status-banner">
+      <div class="status-banner-uptime">
+        <span class="status-banner-value"><%= overallUptime || '—' %><% if (overallUptime) { %>%<% } %></span>
+        <span class="status-banner-label">Overall Uptime (24h)</span>
+      </div>
+    </section>
+
+    <!-- Monitor list -->
+    <section class="status-monitors">
+      <% if (monitors.length === 0) { %>
+        <div class="empty-state">
+          <p>No monitors configured.</p>
+        </div>
+      <% } else { %>
+        <% monitors.forEach(function(m) { %>
+          <div class="status-monitor-row">
+            <div class="status-monitor-info">
+              <div class="status-monitor-name">
+                <span class="status-indicator <%= m.is_paused ? 'pending' : (m.latest_is_up === true ? 'up' : (m.latest_is_up === false ? 'down' : 'pending')) %>"></span>
+                <strong><%= m.name %></strong>
+                <% if (m.is_paused) { %>
+                  <span class="paused-badge">Paused</span>
+                <% } %>
+              </div>
+              <div class="status-monitor-meta">
+                <span class="status-monitor-status">
+                  <% if (m.is_paused) { %>
+                    Paused
+                  <% } else if (m.latest_is_up === true) { %>
+                    Operational
+                  <% } else if (m.latest_is_up === false) { %>
+                    Down
+                  <% } else { %>
+                    Pending
+                  <% } %>
+                </span>
+                <span class="status-monitor-uptime"><%= m.uptime_pct != null ? m.uptime_pct + '% uptime' : '' %></span>
+                <span class="status-monitor-response"><%= m.latest_response_time != null ? m.latest_response_time + 'ms' : '' %></span>
+              </div>
+            </div>
+            <% if (uptimeBars[m.id]) { %>
+              <div class="uptime-bar-container status-uptime-bar">
+                <div class="uptime-bar">
+                  <% uptimeBars[m.id].forEach(function(bucket) { %>
+                    <div class="uptime-segment <%= bucket.uptime === -1 ? 'no-data' : (bucket.uptime >= 99 ? 'good' : (bucket.uptime >= 50 ? 'degraded' : 'bad')) %>" title="<%= bucket.hour.slice(11) %>:00 — <%= bucket.uptime === -1 ? 'No data' : bucket.uptime + '%' %>"></div>
+                  <% }); %>
+                </div>
+                <div class="uptime-bar-axis">
+                  <span>24h ago</span>
+                  <span>Now</span>
+                </div>
+              </div>
+            <% } %>
+          </div>
+        <% }); %>
+      <% } %>
+    </section>
+
+    <!-- Recent Incidents -->
+    <section class="incidents-section">
+      <h2>Recent Incidents</h2>
+      <% if (incidents.length === 0) { %>
+        <div class="empty-state">
+          <p>No incidents recorded. All systems operational.</p>
+        </div>
+      <% } else { %>
+        <div class="incidents-list">
+          <% incidents.forEach(function(inc) { %>
+            <div class="incident-card <%= inc.resolved_at ? 'resolved' : 'ongoing' %>">
+              <div class="incident-status">
+                <span class="incident-dot <%= inc.resolved_at ? 'resolved' : 'ongoing' %>"></span>
+              </div>
+              <div class="incident-details">
+                <div class="incident-header">
+                  <strong><%= inc.monitor_name %></strong>
+                  <span class="incident-badge <%= inc.resolved_at ? 'resolved' : 'ongoing' %>">
+                    <%= inc.resolved_at ? 'Resolved' : 'Ongoing' %>
+                  </span>
+                </div>
+                <div class="incident-meta">
+                  <span>Started: <%= new Date(inc.started_at).toLocaleString() %></span>
+                  <% if (inc.resolved_at) { %>
+                    <span>Resolved: <%= new Date(inc.resolved_at).toLocaleString() %></span>
+                    <span>Duration: <%= inc.duration_seconds < 60 ? inc.duration_seconds + 's' : Math.floor(inc.duration_seconds / 60) + 'm ' + (inc.duration_seconds % 60) + 's' %></span>
+                  <% } %>
+                </div>
+              </div>
+            </div>
+          <% }); %>
+        </div>
+      <% } %>
+    </section>
+  </main>
+
+  <footer>
+    <p>Powered by Pulse v1.3.0</p>
+  </footer>
+</body>
+</html>

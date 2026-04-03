@@ -24,6 +24,23 @@
       <p class="history-summary"><%= total %> total checks</p>
     </section>
 
+    <!-- Response Time Histogram -->
+    <section class="histogram-section">
+      <h3>Response Time Distribution</h3>
+      <div class="histogram">
+        <% var maxCount = Math.max.apply(null, histogram.map(function(b) { return b.count; })) || 1; %>
+        <% histogram.forEach(function(bucket) { %>
+          <div class="histogram-row">
+            <span class="histogram-label"><%= bucket.range %></span>
+            <div class="histogram-bar-track">
+              <div class="histogram-bar" style="width: <%= (bucket.count / maxCount * 100).toFixed(1) %>%"></div>
+            </div>
+            <span class="histogram-count"><%= bucket.count %></span>
+          </div>
+        <% }); %>
+      </div>
+    </section>
+
     <section class="history-table-section">
       <table class="history-table">
         <thead>
@@ -65,7 +82,7 @@
   </main>
 
   <footer>
-    <p>Pulse v1.2.0</p>
+    <p>Pulse v1.3.0</p>
   </footer>
 </body>
 </html>

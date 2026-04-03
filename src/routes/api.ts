@@ -132,6 +132,29 @@ router.get('/monitors', async (_req: Request, res: Response) => {
   }
 });
 
+// DELETE /api/monitors/bulk - Delete multiple monitors
+router.delete('/monitors/bulk', async (req: Request, res: Response) => {
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      res.status(400).json({ error: 'ids array is required' });
+      return;
+    }
+    const placeholders = ids.map((_: number, i: number) => `$${i + 1}`).join(',');
+    const result = await pool.query(
+      `DELETE FROM monitors WHERE id IN (${placeholders}) RETURNING *`,
+      ids
+    );
+    for (const m of result.rows) {
+      stopMonitor(m.id);
+    }
+    res.json({ message: `Deleted ${result.rows.length} monitors`, deleted: result.rows });
+  } catch (err) {
+    console.error('Error bulk deleting monitors:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // DELETE /api/monitors/:id - Remove a monitor
 router.delete('/monitors/:id', async (req: Request, res: Response) => {
   try {
@@ -147,6 +170,82 @@ router.delete('/monitors/:id', async (req: Request, res: Response) => {
     res.json({ message: 'Monitor deleted', monitor: result.rows[0] });
   } catch (err) {
     console.error('Error deleting monitor:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PATCH /api/monitors/:id/pause - Pause a monitor
+router.patch('/monitors/:id/pause', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query(
+      'UPDATE monitors SET is_paused = true WHERE id = $1 RETURNING *',
+      [parseInt(id)]
+    );
+    if (result.rows.length === 0) {
+      res.status(404).json({ error: 'Monitor not found' });
+      return;
+    }
+    stopMonitor(parseInt(id));
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error pausing monitor:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PATCH /api/monitors/:id/resume - Resume a monitor
+router.patch('/monitors/:id/resume', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query(
+      'UPDATE monitors SET is_paused = false WHERE id = $1 RETURNING *',
+      [parseInt(id)]
+    );
+    if (result.rows.length === 0) {
+      res.status(404).json({ error: 'Monitor not found' });
+      return;
+    }
+    const monitor = result.rows[0];
+    startMonitor({
+      id: monitor.id,
+      name: monitor.name,
+      url: monitor.url,
+      interval_seconds: monitor.interval_seconds,
+    });
+    res.json(monitor);
+  } catch (err) {
+    console.error('Error resuming monitor:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/monitors/:id/histogram - Response time distribution
+router.get('/monitors/:id/histogram', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query(`
+      SELECT
+        SUM(CASE WHEN response_time_ms >= 0 AND response_time_ms < 100 THEN 1 ELSE 0 END) AS "0-100",
+        SUM(CASE WHEN response_time_ms >= 100 AND response_time_ms < 200 THEN 1 ELSE 0 END) AS "100-200",
+        SUM(CASE WHEN response_time_ms >= 200 AND response_time_ms < 500 THEN 1 ELSE 0 END) AS "200-500",
+        SUM(CASE WHEN response_time_ms >= 500 AND response_time_ms < 1000 THEN 1 ELSE 0 END) AS "500-1000",
+        SUM(CASE WHEN response_time_ms >= 1000 THEN 1 ELSE 0 END) AS "1000+"
+      FROM checks
+      WHERE monitor_id = $1 AND response_time_ms IS NOT NULL
+    `, [id]);
+
+    const row = result.rows[0];
+    const buckets = [
+      { range: '0-100ms', count: parseInt(row['0-100']) || 0 },
+      { range: '100-200ms', count: parseInt(row['100-200']) || 0 },
+      { range: '200-500ms', count: parseInt(row['200-500']) || 0 },
+      { range: '500-1000ms', count: parseInt(row['500-1000']) || 0 },
+      { range: '1000ms+', count: parseInt(row['1000+']) || 0 },
+    ];
+    res.json(buckets);
+  } catch (err) {
+    console.error('Error fetching histogram:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

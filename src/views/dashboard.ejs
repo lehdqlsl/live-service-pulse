@@ -67,7 +67,10 @@
 
     <!-- Monitors Table -->
     <section class="monitors-section">
-      <h2>Monitors</h2>
+      <div class="monitors-section-header">
+        <h2>Monitors</h2>
+        <button class="bulk-delete-btn" id="bulkDeleteBtn" style="display:none;">Delete Selected</button>
+      </div>
       <% if (monitors.length === 0) { %>
         <div class="empty-state">
           <p>No monitors yet. Add one above to get started.</p>
@@ -75,13 +78,24 @@
       <% } else { %>
         <div class="monitors-grid">
           <% monitors.forEach(function(m) { %>
-            <div class="monitor-card <%= m.latest_is_up === true ? 'up' : (m.latest_is_up === false ? 'down' : 'pending') %>" data-tags="<%= m.tags || '' %>">
+            <div class="monitor-card <%= m.is_paused ? 'paused' : (m.latest_is_up === true ? 'up' : (m.latest_is_up === false ? 'down' : 'pending')) %>" data-tags="<%= m.tags || '' %>" data-id="<%= m.id %>">
               <div class="monitor-header">
                 <div class="monitor-status">
-                  <span class="status-indicator <%= m.latest_is_up === true ? 'up' : (m.latest_is_up === false ? 'down' : 'pending') %>"></span>
+                  <input type="checkbox" class="monitor-checkbox" data-id="<%= m.id %>" title="Select">
+                  <span class="status-indicator <%= m.is_paused ? 'pending' : (m.latest_is_up === true ? 'up' : (m.latest_is_up === false ? 'down' : 'pending')) %>"></span>
                   <h3><%= m.name %></h3>
+                  <% if (m.is_paused) { %>
+                    <span class="paused-badge">Paused</span>
+                  <% } %>
                 </div>
-                <button class="delete-btn" data-id="<%= m.id %>" title="Delete">&times;</button>
+                <div class="monitor-actions">
+                  <% if (m.is_paused) { %>
+                    <button class="resume-btn" data-id="<%= m.id %>" title="Resume">&#9654;</button>
+                  <% } else { %>
+                    <button class="pause-btn" data-id="<%= m.id %>" title="Pause">&#9646;&#9646;</button>
+                  <% } %>
+                  <button class="delete-btn" data-id="<%= m.id %>" title="Delete">&times;</button>
+                </div>
               </div>
               <div class="monitor-url"><%= m.url %></div>
               <% if (m.tags) { %>
@@ -127,7 +141,7 @@
               <% } %>
               <div class="monitor-metrics">
                 <div class="metric">
-                  <span class="metric-value"><%= m.latest_is_up === true ? 'UP' : (m.latest_is_up === false ? 'DOWN' : '—') %></span>
+                  <span class="metric-value"><%= m.is_paused ? 'PAUSED' : (m.latest_is_up === true ? 'UP' : (m.latest_is_up === false ? 'DOWN' : '—')) %></span>
                   <span class="metric-label">Status</span>
                 </div>
                 <div class="metric">
@@ -218,7 +232,7 @@
   </main>
 
   <footer>
-    <p>Pulse v1.2.0 &middot; Auto-refreshes every 30s</p>
+    <p>Pulse v1.3.0 &middot; Auto-refreshes every 30s</p>
   </footer>
 
   <script>
@@ -320,6 +334,52 @@
       } catch {
         alert('Network error');
       }
+    });
+
+    // Pause/Resume
+    document.querySelectorAll('.pause-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = btn.dataset.id;
+        try {
+          const res = await fetch('/api/monitors/' + id + '/pause', { method: 'PATCH' });
+          if (res.ok) window.location.reload();
+        } catch { alert('Failed to pause'); }
+      });
+    });
+
+    document.querySelectorAll('.resume-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = btn.dataset.id;
+        try {
+          const res = await fetch('/api/monitors/' + id + '/resume', { method: 'PATCH' });
+          if (res.ok) window.location.reload();
+        } catch { alert('Failed to resume'); }
+      });
+    });
+
+    // Bulk delete
+    const bulkDeleteBtn = document.getElementById('bulkDeleteBtn');
+    function updateBulkBtn() {
+      const checked = document.querySelectorAll('.monitor-checkbox:checked');
+      bulkDeleteBtn.style.display = checked.length > 0 ? '' : 'none';
+      bulkDeleteBtn.textContent = 'Delete Selected (' + checked.length + ')';
+    }
+    document.querySelectorAll('.monitor-checkbox').forEach(cb => {
+      cb.addEventListener('change', updateBulkBtn);
+    });
+    bulkDeleteBtn.addEventListener('click', async () => {
+      const checked = document.querySelectorAll('.monitor-checkbox:checked');
+      const ids = Array.from(checked).map(cb => parseInt(cb.dataset.id));
+      if (ids.length === 0) return;
+      if (!confirm('Delete ' + ids.length + ' monitor(s)?')) return;
+      try {
+        const res = await fetch('/api/monitors/bulk', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids }),
+        });
+        if (res.ok) window.location.reload();
+      } catch { alert('Failed to delete'); }
     });
 
     document.querySelectorAll('.webhook-delete').forEach(btn => {

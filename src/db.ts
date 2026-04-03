@@ -20,6 +20,7 @@ export async function initDatabase(): Promise<void> {
       );
     `);
     await client.query(`ALTER TABLE monitors ADD COLUMN IF NOT EXISTS tags TEXT NOT NULL DEFAULT ''`);
+    await client.query(`ALTER TABLE monitors ADD COLUMN IF NOT EXISTS is_paused BOOLEAN NOT NULL DEFAULT false`);
     await client.query(`
       CREATE TABLE IF NOT EXISTS checks (
         id SERIAL PRIMARY KEY,

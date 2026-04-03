@@ -799,6 +799,232 @@ footer {
   font-size: 0.8rem;
 }
 
+/* Paused Badge */
+.paused-badge {
+  background: rgba(234, 179, 8, 0.15);
+  color: var(--yellow);
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-left: 6px;
+}
+
+.monitor-card.paused::before { background: var(--yellow); }
+
+/* Monitor Actions */
+.monitor-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pause-btn, .resume-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  cursor: pointer;
+  padding: 2px 6px;
+  line-height: 1;
+  transition: color 0.2s;
+  border-radius: 4px;
+}
+
+.pause-btn:hover { color: var(--yellow); }
+.resume-btn:hover { color: var(--green); }
+
+/* Monitor Checkbox */
+.monitor-checkbox {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* Bulk Delete */
+.monitors-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.monitors-section-header h2 {
+  font-size: 1.1rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+  margin-bottom: 0;
+}
+
+.bulk-delete-btn {
+  background: var(--red);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 0.5rem 1rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.1s;
+}
+
+.bulk-delete-btn:hover { background: #dc2626; }
+.bulk-delete-btn:active { transform: scale(0.97); }
+
+/* Histogram */
+.histogram-section {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.histogram-section h3 {
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-bottom: 1rem;
+}
+
+.histogram {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.histogram-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.histogram-label {
+  width: 90px;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.histogram-bar-track {
+  flex: 1;
+  height: 22px;
+  background: var(--bg-secondary);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.histogram-bar {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 4px;
+  min-width: 2px;
+  transition: width 0.3s ease;
+}
+
+.histogram-count {
+  width: 50px;
+  font-size: 0.8rem;
+  color: var(--text-primary);
+  font-weight: 600;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+/* Public Status Page */
+.status-page .status-banner {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 2rem;
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.status-banner-value {
+  font-size: 3rem;
+  font-weight: 700;
+  color: var(--accent);
+  display: block;
+  line-height: 1.2;
+}
+
+.status-banner-label {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.status-page-summary {
+  font-size: 0.9rem;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: 16px;
+}
+
+.status-page-summary.all-good {
+  background: rgba(34, 197, 94, 0.15);
+  color: var(--green);
+}
+
+.status-page-summary.degraded {
+  background: rgba(234, 179, 8, 0.15);
+  color: var(--yellow);
+}
+
+.status-monitors {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 2rem;
+}
+
+.status-monitor-row {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem 1.25rem;
+}
+
+.status-monitor-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.status-monitor-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1rem;
+}
+
+.status-monitor-meta {
+  display: flex;
+  gap: 1.5rem;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.status-monitor-status {
+  font-weight: 600;
+}
+
+.status-uptime-bar {
+  margin-bottom: 0;
+}
+
+.status-uptime-bar .uptime-bar-label {
+  display: none;
+}
+
 /* Responsive */
 @media (max-width: 600px) {
   main { padding: 1rem; }
