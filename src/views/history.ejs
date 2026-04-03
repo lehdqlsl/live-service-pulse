@@ -24,6 +24,35 @@
       <p class="history-summary"><%= total %> total checks</p>
     </section>
 
+    <% if (sslInfo) { %>
+      <section class="ssl-info-section">
+        <h3>SSL Certificate</h3>
+        <div class="ssl-info-grid">
+          <div class="ssl-info-item">
+            <span class="ssl-info-label">Issuer</span>
+            <span class="ssl-info-value"><%= sslInfo.issuer %></span>
+          </div>
+          <div class="ssl-info-item">
+            <span class="ssl-info-label">Subject</span>
+            <span class="ssl-info-value"><%= sslInfo.subject %></span>
+          </div>
+          <div class="ssl-info-item">
+            <span class="ssl-info-label">Valid From</span>
+            <span class="ssl-info-value"><%= new Date(sslInfo.valid_from).toLocaleDateString() %></span>
+          </div>
+          <div class="ssl-info-item">
+            <span class="ssl-info-label">Valid To</span>
+            <span class="ssl-info-value"><%= new Date(sslInfo.valid_to).toLocaleDateString() %></span>
+          </div>
+          <div class="ssl-info-item">
+            <span class="ssl-info-label">Days Remaining</span>
+            <% var days = sslInfo.days_remaining; %>
+            <span class="ssl-badge <%= days > 30 ? 'ssl-green' : (days > 7 ? 'ssl-yellow' : 'ssl-red') %>"><%= days %> days</span>
+          </div>
+        </div>
+      </section>
+    <% } %>
+
     <!-- Response Time Histogram -->
     <section class="histogram-section">
       <h3>Response Time Distribution</h3>
@@ -49,6 +78,7 @@
             <th>Status</th>
             <th>Status Code</th>
             <th>Response Time</th>
+            <th>Error</th>
           </tr>
         </thead>
         <tbody>
@@ -62,6 +92,7 @@
               </td>
               <td><%= c.status_code || '—' %></td>
               <td><%= c.response_time_ms != null ? c.response_time_ms + 'ms' : '—' %></td>
+              <td><% if (c.error_message) { %><span class="error-text"><%= c.error_message %></span><% } else { %>—<% } %></td>
             </tr>
           <% }); %>
         </tbody>
@@ -82,7 +113,7 @@
   </main>
 
   <footer>
-    <p>Pulse v1.3.0</p>
+    <p>Pulse v1.4.0</p>
   </footer>
 </body>
 </html>

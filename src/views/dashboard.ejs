@@ -50,6 +50,13 @@
         <input type="url" name="url" placeholder="https://example.com" required>
         <input type="number" name="interval" placeholder="Interval (s)" value="60" min="10" max="3600">
         <input type="text" name="tags" placeholder="Tags (comma-separated)">
+        <div class="add-form-row">
+          <label class="checkbox-label">
+            <input type="checkbox" id="bodyCheckEnabled" name="body_check_enabled">
+            Enable body validation
+          </label>
+          <input type="text" id="expectedBodyRegex" name="expected_body_regex" placeholder="Expected regex (e.g. OK|success)" style="display:none;">
+        </div>
         <button type="submit">Add</button>
       </form>
     </section>
@@ -96,6 +103,15 @@
                   <% } %>
                   <button class="delete-btn" data-id="<%= m.id %>" title="Delete">&times;</button>
                 </div>
+              </div>
+              <div class="monitor-badges">
+                <% if (m.url.startsWith('https') && sslData[m.id]) { %>
+                  <% var days = sslData[m.id].days_remaining; %>
+                  <span class="ssl-badge <%= days > 30 ? 'ssl-green' : (days > 7 ? 'ssl-yellow' : 'ssl-red') %>">&#128274; SSL: <%= days %>d</span>
+                <% } %>
+                <% if (m.body_check_enabled) { %>
+                  <span class="body-check-badge">Body Check</span>
+                <% } %>
               </div>
               <div class="monitor-url"><%= m.url %></div>
               <% if (m.tags) { %>
@@ -229,10 +245,35 @@
         </div>
       <% } %>
     </section>
+
+    <!-- API Keys -->
+    <section class="api-keys-section">
+      <h2>API Keys</h2>
+      <form id="apiKeyForm" class="add-form">
+        <input type="text" name="name" placeholder="Key name (e.g. CI/CD)" required>
+        <button type="submit">Generate Key</button>
+      </form>
+      <% if (apiKeys.length > 0) { %>
+        <div class="webhooks-list" style="margin-top: 1rem;">
+          <% apiKeys.forEach(function(k) { %>
+            <div class="webhook-card">
+              <div class="webhook-info">
+                <div class="webhook-url"><%= k.name %></div>
+                <div class="webhook-meta">
+                  <span>Created: <%= new Date(k.created_at).toLocaleString() %></span>
+                  <span>Last used: <%= k.last_used_at ? new Date(k.last_used_at).toLocaleString() : 'Never' %></span>
+                </div>
+              </div>
+              <button class="delete-btn api-key-delete" data-id="<%= k.id %>" title="Revoke">&times;</button>
+            </div>
+          <% }); %>
+        </div>
+      <% } %>
+    </section>
   </main>
 
   <footer>
-    <p>Pulse v1.3.0 &middot; Auto-refreshes every 30s</p>
+    <p>Pulse v1.4.0 &middot; Auto-refreshes every 30s</p>
   </footer>
 
   <script>
@@ -254,6 +295,11 @@
           nameInput.focus();
         }
       }
+    });
+
+    // Body check toggle
+    document.getElementById('bodyCheckEnabled').addEventListener('change', function() {
+      document.getElementById('expectedBodyRegex').style.display = this.checked ? '' : 'none';
     });
 
     // Tag filter
@@ -281,6 +327,8 @@
         url: form.url.value,
         interval: parseInt(form.interval.value) || 60,
         tags: form.tags.value || '',
+        body_check_enabled: form.body_check_enabled.checked,
+        expected_body_regex: form.expected_body_regex.value || '',
       };
       try {
         const res = await fetch('/api/monitors', {
@@ -391,6 +439,44 @@
           if (res.ok) window.location.reload();
         } catch {
           alert('Failed to delete');
+        }
+      });
+    });
+
+    // API Key generation
+    document.getElementById('apiKeyForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const form = e.target;
+      const data = { name: form.name.value };
+      try {
+        const res = await fetch('/api/keys', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        });
+        if (res.ok) {
+          const result = await res.json();
+          alert('API Key generated (copy it now — it won\'t be shown again):\n\n' + result.key);
+          window.location.reload();
+        } else {
+          const err = await res.json();
+          alert(err.error || 'Failed to generate key');
+        }
+      } catch {
+        alert('Network error');
+      }
+    });
+
+    // API Key revoke
+    document.querySelectorAll('.api-key-delete').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!confirm('Revoke this API key?')) return;
+        const id = btn.dataset.id;
+        try {
+          const res = await fetch('/api/keys/' + id, { method: 'DELETE' });
+          if (res.ok) window.location.reload();
+        } catch {
+          alert('Failed to revoke');
         }
       });
     });

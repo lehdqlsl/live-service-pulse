@@ -1025,6 +1025,133 @@ footer {
   display: none;
 }
 
+/* SSL Badge */
+.ssl-badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+  letter-spacing: 0.3px;
+  display: inline-block;
+}
+
+.ssl-badge.ssl-green {
+  background: rgba(34, 197, 94, 0.15);
+  color: var(--green);
+}
+
+.ssl-badge.ssl-yellow {
+  background: rgba(234, 179, 8, 0.15);
+  color: var(--yellow);
+}
+
+.ssl-badge.ssl-red {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--red);
+}
+
+/* Body Check Badge */
+.body-check-badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: rgba(99, 102, 241, 0.15);
+  color: var(--accent);
+  letter-spacing: 0.3px;
+  display: inline-block;
+}
+
+.monitor-badges {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+/* Add Form Row */
+.add-form-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.checkbox-label input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 16px;
+  height: 16px;
+}
+
+/* API Keys Section */
+.api-keys-section {
+  margin-top: 2rem;
+}
+
+.api-keys-section h2 {
+  font-size: 1.1rem;
+  margin-bottom: 0.75rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+/* SSL Info Section (History page) */
+.ssl-info-section {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.ssl-info-section h3 {
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-bottom: 1rem;
+}
+
+.ssl-info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+}
+
+.ssl-info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ssl-info-label {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.ssl-info-value {
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+/* Error text in history table */
+.error-text {
+  color: var(--red);
+  font-size: 0.8rem;
+}
+
 /* Responsive */
 @media (max-width: 600px) {
   main { padding: 1rem; }

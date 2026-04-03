@@ -53,6 +53,10 @@
                 <% if (m.is_paused) { %>
                   <span class="paused-badge">Paused</span>
                 <% } %>
+                <% if (m.url.startsWith('https') && sslData[m.id]) { %>
+                  <% var days = sslData[m.id].days_remaining; %>
+                  <span class="ssl-badge <%= days > 30 ? 'ssl-green' : (days > 7 ? 'ssl-yellow' : 'ssl-red') %>">&#128274; <%= days %>d</span>
+                <% } %>
               </div>
               <div class="status-monitor-meta">
                 <span class="status-monitor-status">
@@ -125,7 +129,7 @@
   </main>
 
   <footer>
-    <p>Powered by Pulse v1.3.0</p>
+    <p>Powered by Pulse v1.4.0</p>
   </footer>
 </body>
 </html>
