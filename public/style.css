@@ -1502,3 +1502,91 @@ footer {
 .header-nav a { color: var(--text-secondary); text-decoration: none; padding: 6px 14px; border-radius: 8px; font-size: 14px; transition: all 0.2s; }
 .header-nav a:hover { color: var(--text-primary); background: var(--bg-card); }
 .header-nav a.active { color: var(--accent); background: rgba(99,102,241,0.1); }
+
+/* ── v1.6.0: SSE Status Indicator ── */
+.sse-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+}
+
+.sse-status.stale {
+  border-color: var(--yellow);
+  color: var(--yellow);
+}
+
+.sse-status.disconnected {
+  border-color: var(--red);
+  color: var(--red);
+}
+
+.sse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.sse-dot.connected {
+  background: var(--green);
+  box-shadow: 0 0 6px var(--green-glow);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.sse-dot.disconnected {
+  background: var(--red);
+}
+
+/* ── v1.6.0: SSE Flash Animation ── */
+@keyframes sseFlash {
+  0% { background-color: rgba(99, 102, 241, 0.15); }
+  100% { background-color: transparent; }
+}
+
+.sse-flash {
+  animation: sseFlash 0.8s ease-out;
+}
+
+.monitor-card.sse-flash {
+  animation: sseFlash 1s ease-out;
+}
+
+/* ── v1.6.0: Response Time Chart ── */
+.rt-chart-container {
+  margin-bottom: 0.75rem;
+}
+
+.rt-chart-label {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.rt-chart {
+  width: 100%;
+  height: 40px;
+  display: block;
+}
+
+.rt-dot {
+  opacity: 0;
+  transition: opacity 0.15s, r 0.15s;
+  cursor: default;
+}
+
+.rt-chart:hover .rt-dot {
+  opacity: 1;
+}
+
+.rt-dot:hover {
+  r: 4;
+}

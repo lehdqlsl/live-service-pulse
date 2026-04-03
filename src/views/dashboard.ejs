@@ -361,6 +361,177 @@
     updateClock();
     setInterval(updateClock, 1000);
 
+    // ── Last Updated Counter ──
+    let lastUpdateTime = Date.now();
+    const lastUpdatedEl = document.getElementById('lastUpdated');
+    const sseDotEl = document.getElementById('sseDot');
+
+    function updateLastUpdated() {
+      const seconds = Math.floor((Date.now() - lastUpdateTime) / 1000);
+      if (seconds < 5) {
+        lastUpdatedEl.textContent = 'Just now';
+      } else {
+        lastUpdatedEl.textContent = seconds + 's ago';
+      }
+      // Color coding
+      const status = document.getElementById('sseStatus');
+      status.classList.remove('stale', 'disconnected');
+      if (seconds > 120) {
+        status.classList.add('disconnected');
+      } else if (seconds > 60) {
+        status.classList.add('stale');
+      }
+    }
+    setInterval(updateLastUpdated, 1000);
+
+    // ── Favicon Status ──
+    function setFavicon(allUp) {
+      const color = allUp ? '%2322c55e' : '%23ef4444';
+      document.getElementById('favicon').href =
+        "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='8' fill='" + color + "'/></svg>";
+    }
+
+    // Track monitor states for favicon
+    const monitorStates = {};
+    document.querySelectorAll('.monitor-card').forEach(function(card) {
+      const id = card.dataset.id;
+      monitorStates[id] = card.classList.contains('up');
+    });
+    function updateFavicon() {
+      const ids = Object.keys(monitorStates);
+      if (ids.length === 0) { setFavicon(true); return; }
+      const allUp = ids.every(function(id) { return monitorStates[id]; });
+      setFavicon(allUp);
+    }
+    updateFavicon();
+
+    // ── Response Time Chart Data ──
+    const chartData = {};
+    document.querySelectorAll('.rt-chart').forEach(function(svg) {
+      const container = svg.parentElement;
+      const id = container.id.replace('rtChart-', '');
+      try {
+        chartData[id] = JSON.parse(svg.getAttribute('data-points') || '[]');
+      } catch(e) {
+        chartData[id] = [];
+      }
+    });
+
+    function renderChart(monitorId) {
+      const container = document.getElementById('rtChart-' + monitorId);
+      if (!container) return;
+      const svg = container.querySelector('.rt-chart');
+      if (!svg) return;
+      const points = chartData[monitorId] || [];
+      if (points.length < 2) return;
+
+      const cMax = Math.max.apply(null, points);
+      const cMin = Math.min.apply(null, points);
+      const cRange = cMax - cMin || 1;
+
+      const coords = points.map(function(v, i) {
+        return {
+          x: (i / (points.length - 1) * 200).toFixed(1),
+          y: (38 - ((v - cMin) / cRange) * 34).toFixed(1),
+          val: v
+        };
+      });
+      const polyStr = coords.map(function(c) { return c.x + ',' + c.y; }).join(' ');
+      const fillStr = '0,40 ' + polyStr + ' 200,40';
+
+      // Use unique gradient id
+      const gradId = 'chartGrad-' + monitorId;
+      svg.innerHTML =
+        '<defs><linearGradient id="' + gradId + '" x1="0" y1="0" x2="0" y2="1">' +
+        '<stop offset="0%" stop-color="var(--accent)" stop-opacity="0.3"/>' +
+        '<stop offset="100%" stop-color="var(--accent)" stop-opacity="0.02"/>' +
+        '</linearGradient></defs>' +
+        '<polygon fill="url(#' + gradId + ')" points="' + fillStr + '" />' +
+        '<polyline fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" points="' + polyStr + '" />' +
+        coords.map(function(c) {
+          return '<circle class="rt-dot" cx="' + c.x + '" cy="' + c.y + '" r="2.5" fill="var(--accent)"><title>' + c.val + 'ms</title></circle>';
+        }).join('');
+    }
+
+    // ── Flash animation helper ──
+    function flashElement(el) {
+      el.classList.remove('sse-flash');
+      void el.offsetWidth; // reflow
+      el.classList.add('sse-flash');
+    }
+
+    // ── SSE Connection ──
+    let pollTimer = null;
+    function connectSSE() {
+      const es = new EventSource('/api/events');
+
+      es.addEventListener('check', function(e) {
+        const d = JSON.parse(e.data);
+        lastUpdateTime = Date.now();
+
+        // Update monitor card
+        const card = document.querySelector('.monitor-card[data-id="' + d.monitorId + '"]');
+        if (card) {
+          // Update status classes
+          card.classList.remove('up', 'down', 'pending');
+          card.classList.add(d.isUp ? 'up' : 'down');
+
+          // Update status indicator
+          const indicator = card.querySelector('.status-indicator');
+          if (indicator) {
+            indicator.classList.remove('up', 'down', 'pending');
+            indicator.classList.add(d.isUp ? 'up' : 'down');
+          }
+
+          // Update metric values
+          const statusEl = document.getElementById('status-' + d.monitorId);
+          if (statusEl) { statusEl.textContent = d.isUp ? 'UP' : 'DOWN'; flashElement(statusEl); }
+
+          const responseEl = document.getElementById('response-' + d.monitorId);
+          if (responseEl) { responseEl.textContent = d.responseTime + 'ms'; flashElement(responseEl); }
+
+          const codeEl = document.getElementById('code-' + d.monitorId);
+          if (codeEl && d.statusCode) { codeEl.textContent = d.statusCode; flashElement(codeEl); }
+
+          // Flash the card
+          flashElement(card);
+
+          // Update chart data
+          if (!chartData[d.monitorId]) chartData[d.monitorId] = [];
+          chartData[d.monitorId].push(d.responseTime);
+          if (chartData[d.monitorId].length > 20) chartData[d.monitorId].shift();
+          renderChart(d.monitorId);
+
+          // Update favicon state
+          monitorStates[d.monitorId] = d.isUp;
+          updateFavicon();
+        }
+      });
+
+      es.addEventListener('incident', function(e) {
+        const d = JSON.parse(e.data);
+        lastUpdateTime = Date.now();
+      });
+
+      es.onopen = function() {
+        sseDotEl.classList.remove('disconnected');
+        sseDotEl.classList.add('connected');
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+      };
+
+      es.onerror = function() {
+        sseDotEl.classList.remove('connected');
+        sseDotEl.classList.add('disconnected');
+        // Fallback: poll every 30s
+        if (!pollTimer) {
+          pollTimer = setInterval(function() {
+            window.location.reload();
+          }, 30000);
+        }
+      };
+    }
+    connectSSE();
+
     // Keyboard shortcut: 'n' to focus add form
     document.addEventListener('keydown', function(e) {
       if (e.key === 'n' && !e.ctrlKey && !e.metaKey && !e.altKey && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
