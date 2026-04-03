@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Pulse — SLA Reports</title>
+  <title>Pulse — SLA Report</title>
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
@@ -13,32 +13,29 @@
         <span class="pulse-dot"></span>
         <h1>Pulse</h1>
       </div>
-      <nav class="main-nav">
-        <a href="/" class="nav-link">Dashboard</a>
-        <a href="/status" class="nav-link">Status</a>
-        <a href="/reports" class="nav-link active">Reports</a>
+      <nav class="header-nav">
+        <a href="/">Dashboard</a>
+        <a href="/status">Status</a>
+        <a href="/reports" class="active">Reports</a>
       </nav>
-      <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">🌙</button>
     </div>
   </header>
 
   <main>
-    <!-- Month Selector -->
-    <section class="month-selector">
-      <a href="/reports?month=<%= prevMonth %>" class="month-arrow">&larr;</a>
-      <h2 class="month-label"><%= monthLabel %></h2>
-      <a href="/reports?month=<%= nextMonth %>" class="month-arrow">&rarr;</a>
+    <!-- Month Navigation -->
+    <section class="report-header">
+      <div class="month-nav">
+        <a href="/reports?month=<%= prevMonth %>" class="nav-btn">&larr; Previous</a>
+        <h2><%= monthLabel %></h2>
+        <a href="/reports?month=<%= nextMonth %>" class="nav-btn">Next &rarr;</a>
+      </div>
     </section>
 
     <!-- Summary Cards -->
     <section class="stats-grid">
       <div class="stat-card">
-        <div class="stat-value"><%= summary.overallUptime %><span class="stat-unit">%</span></div>
+        <div class="stat-value"><%= summary.overallUptime !== null ? summary.overallUptime.toFixed(2) + '%' : '—' %></div>
         <div class="stat-label">Overall Uptime</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-value"><%= summary.totalChecks %></div>
-        <div class="stat-label">Total Checks</div>
       </div>
       <div class="stat-card">
         <div class="stat-value"><%= summary.avgResponse || '—' %><% if (summary.avgResponse) { %><span class="stat-unit">ms</span><% } %></div>
@@ -48,33 +45,25 @@
         <div class="stat-value"><%= summary.totalIncidents %></div>
         <div class="stat-label">Incidents</div>
       </div>
-    </section>
-
-    <!-- Export Buttons -->
-    <section class="export-section">
-      <h3>Export Data</h3>
-      <div class="export-buttons">
-        <a href="/api/export/monitors" class="btn btn-export">📥 Export Monitors (CSV)</a>
-        <a href="/api/export/checks?from=<%= month %>-01&to=<%= nextMonth %>-01" class="btn btn-export">📥 Export Checks (CSV)</a>
-        <a href="/api/export/incidents?from=<%= month %>-01&to=<%= nextMonth %>-01" class="btn btn-export">📥 Export Incidents (CSV)</a>
+      <div class="stat-card">
+        <div class="stat-value"><%= summary.totalDowntime %><span class="stat-unit">min</span></div>
+        <div class="stat-label">Total Downtime</div>
       </div>
     </section>
 
-    <!-- SLA Table -->
-    <section class="sla-section">
-      <h2>SLA Report by Monitor</h2>
+    <!-- Per-Monitor Table -->
+    <section class="report-table-section">
+      <h2>Per-Monitor Breakdown</h2>
       <% if (monitors.length === 0) { %>
-        <div class="empty-state">
-          <p>No monitoring data for this month.</p>
-        </div>
+        <div class="empty-state"><p>No data for this month.</p></div>
       <% } else { %>
-        <div class="sla-table-container">
-          <table class="sla-table">
+        <div class="table-wrapper">
+          <table class="report-table">
             <thead>
               <tr>
                 <th>Monitor</th>
-                <th>Uptime</th>
                 <th>Checks</th>
+                <th>Uptime</th>
                 <th>Avg (ms)</th>
                 <th>P95 (ms)</th>
                 <th>Max (ms)</th>
@@ -86,48 +75,51 @@
               <% monitors.forEach(function(m) { %>
                 <tr>
                   <td>
-                    <div class="sla-monitor-name"><%= m.name %></div>
-                    <div class="sla-monitor-url"><%= m.url %></div>
+                    <div class="report-monitor-name"><%= m.name %></div>
+                    <div class="report-monitor-url"><%= m.url %></div>
                   </td>
+                  <td><%= m.total_checks || 0 %></td>
                   <td>
-                    <span class="uptime-badge <%= parseFloat(m.uptime_pct) >= 99.9 ? 'excellent' : (parseFloat(m.uptime_pct) >= 99 ? 'good' : 'poor') %>">
-                      <%= m.uptime_pct != null ? m.uptime_pct + '%' : '—' %>
+                    <span class="uptime-cell <%= m.uptime_pct >= 99.9 ? 'excellent' : (m.uptime_pct >= 99 ? 'good' : (m.uptime_pct >= 95 ? 'warning' : 'critical')) %>">
+                      <%= m.uptime_pct !== null ? m.uptime_pct.toFixed(2) + '%' : '—' %>
                     </span>
                   </td>
-                  <td><%= m.total_checks %></td>
                   <td><%= m.avg_response_ms || '—' %></td>
                   <td><%= m.p95_response_ms || '—' %></td>
                   <td><%= m.max_response_ms || '—' %></td>
-                  <td><%= m.incidents_count %></td>
-                  <td><%= m.total_downtime_minutes ? m.total_downtime_minutes + ' min' : '0 min' %></td>
+                  <td><%= m.incidents_count || 0 %></td>
+                  <td><%= m.total_downtime_minutes || 0 %>min</td>
                 </tr>
               <% }); %>
             </tbody>
           </table>
         </div>
+
+        <!-- SLA Summary -->
+        <div class="sla-summary">
+          <h3>SLA Reference</h3>
+          <div class="sla-grid">
+            <div class="sla-item excellent">99.99% — 4.3min/month downtime</div>
+            <div class="sla-item good">99.9% — 43.8min/month downtime</div>
+            <div class="sla-item warning">99% — 7.3hr/month downtime</div>
+            <div class="sla-item critical">95% — 1.5days/month downtime</div>
+          </div>
+        </div>
       <% } %>
+    </section>
+
+    <!-- Export -->
+    <section class="export-section">
+      <h2>Export Data</h2>
+      <div class="export-buttons">
+        <a href="/api/export/monitors" class="btn btn-export" download>Export Monitors (CSV)</a>
+        <a href="/api/export/incidents" class="btn btn-export" download>Export Incidents (CSV)</a>
+      </div>
     </section>
   </main>
 
   <footer>
-    <p>Pulse v1.5.0 &middot; SLA Reports</p>
+    <p>Pulse v1.5.0 &middot; SLA Report</p>
   </footer>
-
-  <script>
-    function toggleTheme() {
-      const current = document.documentElement.getAttribute('data-theme');
-      const next = current === 'light' ? 'dark' : 'light';
-      document.documentElement.setAttribute('data-theme', next);
-      localStorage.setItem('pulse-theme', next);
-      document.querySelector('.theme-toggle').textContent = next === 'light' ? '☀️' : '🌙';
-    }
-    // Apply saved theme
-    const savedTheme = localStorage.getItem('pulse-theme');
-    if (savedTheme) {
-      document.documentElement.setAttribute('data-theme', savedTheme);
-      const btn = document.querySelector('.theme-toggle');
-      if (btn) btn.textContent = savedTheme === 'light' ? '☀️' : '🌙';
-    }
-  </script>
 </body>
 </html>
