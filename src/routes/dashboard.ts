@@ -41,9 +41,34 @@ router.get('/', async (_req: Request, res: Response) => {
       WHERE checked_at > NOW() - INTERVAL '24 hours'
     `);
 
+    // Fetch sparkline data for each monitor
+    const sparklines: Record<number, number[]> = {};
+    for (const m of result.rows) {
+      const sparkResult = await pool.query(
+        'SELECT response_time_ms FROM checks WHERE monitor_id = $1 ORDER BY checked_at DESC LIMIT 60',
+        [m.id]
+      );
+      sparklines[m.id] = sparkResult.rows.reverse().map((r: { response_time_ms: number }) => r.response_time_ms);
+    }
+
+    // Fetch recent incidents
+    const incidentsResult = await pool.query(`
+      SELECT i.*, m.name AS monitor_name, m.url AS monitor_url
+      FROM incidents i
+      JOIN monitors m ON m.id = i.monitor_id
+      ORDER BY i.started_at DESC
+      LIMIT 20
+    `);
+
+    // Fetch webhooks
+    const webhooksResult = await pool.query('SELECT * FROM webhooks ORDER BY created_at DESC');
+
     res.render('dashboard', {
       monitors: result.rows,
       stats: statsResult.rows[0],
+      sparklines,
+      incidents: incidentsResult.rows,
+      webhooks: webhooksResult.rows,
     });
   } catch (err) {
     console.error('Dashboard error:', err);

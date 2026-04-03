@@ -32,6 +32,27 @@ export async function initDatabase(): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_checks_monitor_id_checked_at
       ON checks (monitor_id, checked_at DESC);
     `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS incidents (
+        id SERIAL PRIMARY KEY,
+        monitor_id INTEGER NOT NULL REFERENCES monitors(id) ON DELETE CASCADE,
+        started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        resolved_at TIMESTAMPTZ,
+        duration_seconds INTEGER
+      );
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_incidents_monitor_id
+      ON incidents (monitor_id, started_at DESC);
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS webhooks (
+        id SERIAL PRIMARY KEY,
+        url TEXT NOT NULL,
+        events TEXT NOT NULL DEFAULT 'down,up',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
     console.log('Database tables initialized');
   } finally {
     client.release();

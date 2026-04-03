@@ -69,6 +69,25 @@
                 <button class="delete-btn" data-id="<%= m.id %>" title="Delete">&times;</button>
               </div>
               <div class="monitor-url"><%= m.url %></div>
+              <% if (sparklines[m.id] && sparklines[m.id].length > 1) { %>
+                <div class="sparkline-container">
+                  <% var points = sparklines[m.id]; var max = Math.max.apply(null, points); var min = Math.min.apply(null, points); var range = max - min || 1; %>
+                  <svg viewBox="0 0 120 30" class="sparkline" preserveAspectRatio="none">
+                    <polyline
+                      fill="none"
+                      stroke="var(--accent)"
+                      stroke-width="1.5"
+                      stroke-linejoin="round"
+                      stroke-linecap="round"
+                      points="<%= points.map(function(v, i) { return (i / (points.length - 1) * 120).toFixed(1) + ',' + (30 - ((v - min) / range) * 26 - 2).toFixed(1); }).join(' ') %>"
+                    />
+                  </svg>
+                  <div class="sparkline-labels">
+                    <span><%= min %>ms</span>
+                    <span><%= max %>ms</span>
+                  </div>
+                </div>
+              <% } %>
               <div class="monitor-metrics">
                 <div class="metric">
                   <span class="metric-value"><%= m.latest_is_up === true ? 'UP' : (m.latest_is_up === false ? 'DOWN' : '—') %></span>
@@ -96,10 +115,72 @@
         </div>
       <% } %>
     </section>
+
+    <!-- Incidents Timeline -->
+    <section class="incidents-section">
+      <h2>Recent Incidents</h2>
+      <% if (incidents.length === 0) { %>
+        <div class="empty-state">
+          <p>No incidents recorded. All systems operational.</p>
+        </div>
+      <% } else { %>
+        <div class="incidents-list">
+          <% incidents.forEach(function(inc) { %>
+            <div class="incident-card <%= inc.resolved_at ? 'resolved' : 'ongoing' %>">
+              <div class="incident-status">
+                <span class="incident-dot <%= inc.resolved_at ? 'resolved' : 'ongoing' %>"></span>
+              </div>
+              <div class="incident-details">
+                <div class="incident-header">
+                  <strong><%= inc.monitor_name %></strong>
+                  <span class="incident-badge <%= inc.resolved_at ? 'resolved' : 'ongoing' %>">
+                    <%= inc.resolved_at ? 'Resolved' : 'Ongoing' %>
+                  </span>
+                </div>
+                <div class="incident-meta">
+                  <span>Started: <%= new Date(inc.started_at).toLocaleString() %></span>
+                  <% if (inc.resolved_at) { %>
+                    <span>Resolved: <%= new Date(inc.resolved_at).toLocaleString() %></span>
+                    <span>Duration: <%= inc.duration_seconds < 60 ? inc.duration_seconds + 's' : Math.floor(inc.duration_seconds / 60) + 'm ' + (inc.duration_seconds % 60) + 's' %></span>
+                  <% } %>
+                </div>
+                <div class="incident-url"><%= inc.monitor_url %></div>
+              </div>
+            </div>
+          <% }); %>
+        </div>
+      <% } %>
+    </section>
+
+    <!-- Webhooks -->
+    <section class="webhooks-section">
+      <h2>Webhooks</h2>
+      <form id="webhookForm" class="add-form">
+        <input type="url" name="url" placeholder="https://example.com/webhook" required>
+        <input type="text" name="events" placeholder="Events (default: down,up)" value="down,up">
+        <button type="submit">Add Webhook</button>
+      </form>
+      <% if (webhooks.length > 0) { %>
+        <div class="webhooks-list">
+          <% webhooks.forEach(function(wh) { %>
+            <div class="webhook-card">
+              <div class="webhook-info">
+                <div class="webhook-url"><%= wh.url %></div>
+                <div class="webhook-meta">
+                  <span class="webhook-events"><%= wh.events %></span>
+                  <span>Added: <%= new Date(wh.created_at).toLocaleString() %></span>
+                </div>
+              </div>
+              <button class="delete-btn webhook-delete" data-id="<%= wh.id %>" title="Delete">&times;</button>
+            </div>
+          <% }); %>
+        </div>
+      <% } %>
+    </section>
   </main>
 
   <footer>
-    <p>Pulse v1.0.0 &middot; Auto-refreshes every 30s</p>
+    <p>Pulse v1.1.0 &middot; Auto-refreshes every 30s</p>
   </footer>
 
   <script>
@@ -128,12 +209,49 @@
       }
     });
 
-    document.querySelectorAll('.delete-btn').forEach(btn => {
+    document.querySelectorAll('.delete-btn:not(.webhook-delete)').forEach(btn => {
       btn.addEventListener('click', async () => {
         if (!confirm('Delete this monitor?')) return;
         const id = btn.dataset.id;
         try {
           const res = await fetch('/api/monitors/' + id, { method: 'DELETE' });
+          if (res.ok) window.location.reload();
+        } catch {
+          alert('Failed to delete');
+        }
+      });
+    });
+
+    document.getElementById('webhookForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const form = e.target;
+      const data = {
+        url: form.url.value,
+        events: form.events.value || 'down,up',
+      };
+      try {
+        const res = await fetch('/api/webhooks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        });
+        if (res.ok) {
+          window.location.reload();
+        } else {
+          const err = await res.json();
+          alert(err.error || 'Failed to add webhook');
+        }
+      } catch {
+        alert('Network error');
+      }
+    });
+
+    document.querySelectorAll('.webhook-delete').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!confirm('Delete this webhook?')) return;
+        const id = btn.dataset.id;
+        try {
+          const res = await fetch('/api/webhooks/' + id, { method: 'DELETE' });
           if (res.ok) window.location.reload();
         } catch {
           alert('Failed to delete');
