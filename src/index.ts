@@ -19,7 +19,7 @@ app.set('views', path.join(__dirname, 'views'));
 
 // Health endpoint
 app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', version: '1.4.0' });
+  res.json({ status: 'ok', version: '1.5.0' });
 });
 
 // Routes
@@ -33,7 +33,7 @@ async function main() {
     await startAllMonitors();
 
     app.listen(PORT, '0.0.0.0', () => {
-      console.log(`Pulse v1.4.0 running on port ${PORT}`);
+      console.log(`Pulse v1.5.0 running on port ${PORT}`);
     });
   } catch (err) {
     console.error('Failed to start:', err);

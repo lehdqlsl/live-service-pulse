@@ -13,38 +13,84 @@ interface Monitor {
 const timers: Map<number, NodeJS.Timeout> = new Map();
 const monitorState: Map<number, boolean> = new Map(); // track last known up/down
 
+function postJSON(url: string, payload: string, headers: Record<string, string> = {}): void {
+  try {
+    const parsed = new URL(url);
+    const client = parsed.protocol === 'https:' ? https : http;
+    const req = client.request(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': String(Buffer.byteLength(payload)), ...headers },
+      timeout: 10000,
+    });
+    req.on('error', () => {});
+    req.write(payload);
+    req.end();
+  } catch {
+    // ignore delivery failures
+  }
+}
+
 async function fireWebhooks(event: 'down' | 'up', monitor: Monitor, statusCode: number | null, responseTime: number): Promise<void> {
+  const timestamp = new Date().toISOString();
+  const basePayload = {
+    event,
+    monitor: { id: monitor.id, name: monitor.name, url: monitor.url },
+    status_code: statusCode,
+    response_time_ms: responseTime,
+    timestamp,
+  };
+
+  // Legacy webhooks
   try {
     const result = await pool.query('SELECT url, events FROM webhooks');
     for (const wh of result.rows) {
       const events = (wh.events as string).split(',').map((e: string) => e.trim());
       if (!events.includes(event)) continue;
-
-      const payload = JSON.stringify({
-        event,
-        monitor: { id: monitor.id, name: monitor.name, url: monitor.url },
-        status_code: statusCode,
-        response_time_ms: responseTime,
-        timestamp: new Date().toISOString(),
-      });
-
-      try {
-        const parsed = new URL(wh.url);
-        const client = parsed.protocol === 'https:' ? https : http;
-        const req = client.request(wh.url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) },
-          timeout: 10000,
-        });
-        req.on('error', () => {});
-        req.write(payload);
-        req.end();
-      } catch {
-        // ignore webhook delivery failures
-      }
+      postJSON(wh.url, JSON.stringify(basePayload));
     }
   } catch {
     // ignore db errors for webhooks
+  }
+
+  // Notification channels
+  try {
+    const result = await pool.query('SELECT type, config FROM notification_channels WHERE enabled = true');
+    for (const ch of result.rows) {
+      const config = ch.config as { url: string };
+      const isDown = event === 'down';
+      const statusText = isDown ? 'DOWN' : 'UP';
+      const color = isDown ? '#ef4444' : '#22c55e';
+
+      if (ch.type === 'webhook') {
+        postJSON(config.url, JSON.stringify(basePayload));
+      } else if (ch.type === 'slack') {
+        const slackPayload = JSON.stringify({
+          attachments: [{
+            color,
+            title: `${monitor.name} is ${statusText}`,
+            text: `URL: ${monitor.url}\nStatus Code: ${statusCode || 'N/A'}\nResponse Time: ${responseTime}ms`,
+            ts: Math.floor(Date.now() / 1000),
+          }],
+        });
+        postJSON(config.url, slackPayload);
+      } else if (ch.type === 'discord') {
+        const discordPayload = JSON.stringify({
+          embeds: [{
+            title: `${monitor.name} is ${statusText}`,
+            color: isDown ? 0xef4444 : 0x22c55e,
+            fields: [
+              { name: 'URL', value: monitor.url, inline: true },
+              { name: 'Status Code', value: String(statusCode || 'N/A'), inline: true },
+              { name: 'Response Time', value: `${responseTime}ms`, inline: true },
+            ],
+            timestamp,
+          }],
+        });
+        postJSON(config.url, discordPayload);
+      }
+    }
+  } catch {
+    // ignore channel errors
   }
 }
 

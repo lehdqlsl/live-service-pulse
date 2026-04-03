@@ -14,9 +14,13 @@
         <span class="pulse-dot"></span>
         <h1>Pulse</h1>
       </div>
+      <nav class="main-nav">
+        <a href="/" class="nav-link active">Dashboard</a>
+        <a href="/status" class="nav-link">Status</a>
+        <a href="/reports" class="nav-link">Report</a>
+      </nav>
       <div class="header-right">
         <span class="real-time-clock" id="clock"></span>
-        <p class="tagline">Uptime Monitoring</p>
       </div>
     </div>
   </header>
@@ -76,7 +80,10 @@
     <section class="monitors-section">
       <div class="monitors-section-header">
         <h2>Monitors</h2>
-        <button class="bulk-delete-btn" id="bulkDeleteBtn" style="display:none;">Delete Selected</button>
+        <div class="monitors-section-actions">
+          <a href="/api/export/monitors" class="export-btn" title="Export All (JSON)">Export All (JSON)</a>
+          <button class="bulk-delete-btn" id="bulkDeleteBtn" style="display:none;">Delete Selected</button>
+        </div>
       </div>
       <% if (monitors.length === 0) { %>
         <div class="empty-state">
@@ -246,6 +253,39 @@
       <% } %>
     </section>
 
+    <!-- Notification Channels -->
+    <section class="channels-section">
+      <h2>Notification Channels</h2>
+      <form id="channelForm" class="add-form">
+        <select name="type" required>
+          <option value="webhook">Webhook</option>
+          <option value="slack">Slack</option>
+          <option value="discord">Discord</option>
+        </select>
+        <input type="url" name="url" placeholder="Webhook / Slack / Discord URL" required>
+        <button type="submit">Add Channel</button>
+      </form>
+      <% if (channels.length > 0) { %>
+        <div class="webhooks-list" style="margin-top: 1rem;">
+          <% channels.forEach(function(ch) { %>
+            <div class="webhook-card">
+              <div class="webhook-info">
+                <div class="webhook-url">
+                  <span class="channel-type-badge <%= ch.type %>"><%= ch.type %></span>
+                  <%= ch.config.url %>
+                </div>
+                <div class="webhook-meta">
+                  <span><%= ch.enabled ? 'Enabled' : 'Disabled' %></span>
+                  <span>Added: <%= new Date(ch.created_at).toLocaleString() %></span>
+                </div>
+              </div>
+              <button class="delete-btn channel-delete" data-id="<%= ch.id %>" title="Delete">&times;</button>
+            </div>
+          <% }); %>
+        </div>
+      <% } %>
+    </section>
+
     <!-- API Keys -->
     <section class="api-keys-section">
       <h2>API Keys</h2>
@@ -273,7 +313,7 @@
   </main>
 
   <footer>
-    <p>Pulse v1.4.0 &middot; Auto-refreshes every 30s</p>
+    <p>Pulse v1.5.0 &middot; Auto-refreshes every 30s</p>
   </footer>
 
   <script>
@@ -436,6 +476,44 @@
         const id = btn.dataset.id;
         try {
           const res = await fetch('/api/webhooks/' + id, { method: 'DELETE' });
+          if (res.ok) window.location.reload();
+        } catch {
+          alert('Failed to delete');
+        }
+      });
+    });
+
+    // Channel management
+    document.getElementById('channelForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const form = e.target;
+      const data = {
+        type: form.type.value,
+        config: { url: form.url.value },
+      };
+      try {
+        const res = await fetch('/api/channels', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        });
+        if (res.ok) {
+          window.location.reload();
+        } else {
+          const err = await res.json();
+          alert(err.error || 'Failed to add channel');
+        }
+      } catch {
+        alert('Network error');
+      }
+    });
+
+    document.querySelectorAll('.channel-delete').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!confirm('Delete this notification channel?')) return;
+        const id = btn.dataset.id;
+        try {
+          const res = await fetch('/api/channels/' + id, { method: 'DELETE' });
           if (res.ok) window.location.reload();
         } catch {
           alert('Failed to delete');

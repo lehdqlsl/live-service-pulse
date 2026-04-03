@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pulse — SLA Reports</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header>
+    <div class="header-content">
+      <div class="logo">
+        <span class="pulse-dot"></span>
+        <h1>Pulse</h1>
+      </div>
+      <nav class="main-nav">
+        <a href="/" class="nav-link">Dashboard</a>
+        <a href="/status" class="nav-link">Status</a>
+        <a href="/reports" class="nav-link active">Reports</a>
+      </nav>
+      <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">🌙</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- Month Selector -->
+    <section class="month-selector">
+      <a href="/reports?month=<%= prevMonth %>" class="month-arrow">&larr;</a>
+      <h2 class="month-label"><%= monthLabel %></h2>
+      <a href="/reports?month=<%= nextMonth %>" class="month-arrow">&rarr;</a>
+    </section>
+
+    <!-- Summary Cards -->
+    <section class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-value"><%= summary.overallUptime %><span class="stat-unit">%</span></div>
+        <div class="stat-label">Overall Uptime</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value"><%= summary.totalChecks %></div>
+        <div class="stat-label">Total Checks</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value"><%= summary.avgResponse || '—' %><% if (summary.avgResponse) { %><span class="stat-unit">ms</span><% } %></div>
+        <div class="stat-label">Avg Response</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value"><%= summary.totalIncidents %></div>
+        <div class="stat-label">Incidents</div>
+      </div>
+    </section>
+
+    <!-- Export Buttons -->
+    <section class="export-section">
+      <h3>Export Data</h3>
+      <div class="export-buttons">
+        <a href="/api/export/monitors" class="btn btn-export">📥 Export Monitors (CSV)</a>
+        <a href="/api/export/checks?from=<%= month %>-01&to=<%= nextMonth %>-01" class="btn btn-export">📥 Export Checks (CSV)</a>
+        <a href="/api/export/incidents?from=<%= month %>-01&to=<%= nextMonth %>-01" class="btn btn-export">📥 Export Incidents (CSV)</a>
+      </div>
+    </section>
+
+    <!-- SLA Table -->
+    <section class="sla-section">
+      <h2>SLA Report by Monitor</h2>
+      <% if (monitors.length === 0) { %>
+        <div class="empty-state">
+          <p>No monitoring data for this month.</p>
+        </div>
+      <% } else { %>
+        <div class="sla-table-container">
+          <table class="sla-table">
+            <thead>
+              <tr>
+                <th>Monitor</th>
+                <th>Uptime</th>
+                <th>Checks</th>
+                <th>Avg (ms)</th>
+                <th>P95 (ms)</th>
+                <th>Max (ms)</th>
+                <th>Incidents</th>
+                <th>Downtime</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% monitors.forEach(function(m) { %>
+                <tr>
+                  <td>
+                    <div class="sla-monitor-name"><%= m.name %></div>
+                    <div class="sla-monitor-url"><%= m.url %></div>
+                  </td>
+                  <td>
+                    <span class="uptime-badge <%= parseFloat(m.uptime_pct) >= 99.9 ? 'excellent' : (parseFloat(m.uptime_pct) >= 99 ? 'good' : 'poor') %>">
+                      <%= m.uptime_pct != null ? m.uptime_pct + '%' : '—' %>
+                    </span>
+                  </td>
+                  <td><%= m.total_checks %></td>
+                  <td><%= m.avg_response_ms || '—' %></td>
+                  <td><%= m.p95_response_ms || '—' %></td>
+                  <td><%= m.max_response_ms || '—' %></td>
+                  <td><%= m.incidents_count %></td>
+                  <td><%= m.total_downtime_minutes ? m.total_downtime_minutes + ' min' : '0 min' %></td>
+                </tr>
+              <% }); %>
+            </tbody>
+          </table>
+        </div>
+      <% } %>
+    </section>
+  </main>
+
+  <footer>
+    <p>Pulse v1.5.0 &middot; SLA Reports</p>
+  </footer>
+
+  <script>
+    function toggleTheme() {
+      const current = document.documentElement.getAttribute('data-theme');
+      const next = current === 'light' ? 'dark' : 'light';
+      document.documentElement.setAttribute('data-theme', next);
+      localStorage.setItem('pulse-theme', next);
+      document.querySelector('.theme-toggle').textContent = next === 'light' ? '☀️' : '🌙';
+    }
+    // Apply saved theme
+    const savedTheme = localStorage.getItem('pulse-theme');
+    if (savedTheme) {
+      document.documentElement.setAttribute('data-theme', savedTheme);
+      const btn = document.querySelector('.theme-toggle');
+      if (btn) btn.textContent = savedTheme === 'light' ? '☀️' : '🌙';
+    }
+  </script>
+</body>
+</html>

@@ -13,15 +13,27 @@
         <span class="pulse-dot"></span>
         <h1>Pulse</h1>
       </div>
-      <p class="tagline"><a href="/" class="back-link">&larr; Dashboard</a></p>
+      <nav class="main-nav">
+        <a href="/" class="nav-link">Dashboard</a>
+        <a href="/status" class="nav-link">Status</a>
+        <a href="/reports" class="nav-link">Report</a>
+      </nav>
+      <div class="header-right">
+        <a href="/" class="back-link">&larr; Back</a>
+      </div>
     </div>
   </header>
 
   <main>
     <section class="history-header">
-      <h2>Check History: <%= monitor.name %></h2>
-      <p class="history-url"><%= monitor.url %></p>
-      <p class="history-summary"><%= total %> total checks</p>
+      <div class="history-header-row">
+        <div>
+          <h2>Check History: <%= monitor.name %></h2>
+          <p class="history-url"><%= monitor.url %></p>
+          <p class="history-summary"><%= total %> total checks</p>
+        </div>
+        <a href="/api/export/checks/<%= monitor.id %>?format=csv" class="export-btn">Export CSV</a>
+      </div>
     </section>
 
     <% if (sslInfo) { %>
@@ -49,6 +61,72 @@
             <% var days = sslInfo.days_remaining; %>
             <span class="ssl-badge <%= days > 30 ? 'ssl-green' : (days > 7 ? 'ssl-yellow' : 'ssl-red') %>"><%= days %> days</span>
           </div>
+        </div>
+      </section>
+    <% } %>
+
+    <!-- Response Time Chart (Time Series) -->
+    <% if (timeseries && timeseries.length > 1) { %>
+      <section class="timeseries-section">
+        <h3>Response Time (Last 24h)</h3>
+        <div class="timeseries-chart">
+          <%
+            var tsPoints = timeseries.filter(function(p) { return p.response_time_ms != null; });
+            var tsMax = Math.max.apply(null, tsPoints.map(function(p) { return p.response_time_ms; }));
+            var tsMin = Math.min.apply(null, tsPoints.map(function(p) { return p.response_time_ms; }));
+            var tsRange = tsMax - tsMin || 1;
+            var chartW = 800;
+            var chartH = 200;
+            var padL = 60;
+            var padR = 10;
+            var padT = 10;
+            var padB = 30;
+            var plotW = chartW - padL - padR;
+            var plotH = chartH - padT - padB;
+          %>
+          <svg viewBox="0 0 <%= chartW %> <%= chartH %>" class="timeseries-svg" preserveAspectRatio="none">
+            <!-- Grid lines -->
+            <% for (var g = 0; g <= 4; g++) { %>
+              <% var gy = padT + (plotH / 4) * g; %>
+              <line x1="<%= padL %>" y1="<%= gy %>" x2="<%= chartW - padR %>" y2="<%= gy %>" stroke="var(--border)" stroke-width="0.5" />
+              <text x="<%= padL - 5 %>" y="<%= gy + 4 %>" text-anchor="end" fill="var(--text-muted)" font-size="9">
+                <%= Math.round(tsMax - (tsRange / 4) * g) %>ms
+              </text>
+            <% } %>
+            <!-- Time axis labels -->
+            <% var firstTime = new Date(tsPoints[0].checked_at).getTime(); %>
+            <% var lastTime = new Date(tsPoints[tsPoints.length - 1].checked_at).getTime(); %>
+            <% var timeRange = lastTime - firstTime || 1; %>
+            <% for (var t = 0; t <= 4; t++) { %>
+              <% var tx = padL + (plotW / 4) * t; %>
+              <% var tTime = new Date(firstTime + (timeRange / 4) * t); %>
+              <text x="<%= tx %>" y="<%= chartH - 5 %>" text-anchor="middle" fill="var(--text-muted)" font-size="9">
+                <%= tTime.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}) %>
+              </text>
+            <% } %>
+            <!-- Data line -->
+            <polyline
+              fill="none"
+              stroke="var(--accent)"
+              stroke-width="1.5"
+              stroke-linejoin="round"
+              stroke-linecap="round"
+              points="<%= tsPoints.map(function(p, i) {
+                var x = padL + (i / (tsPoints.length - 1)) * plotW;
+                var y = padT + plotH - ((p.response_time_ms - tsMin) / tsRange) * plotH;
+                return x.toFixed(1) + ',' + y.toFixed(1);
+              }).join(' ') %>"
+            />
+            <!-- Data points with tooltips -->
+            <% tsPoints.forEach(function(p, i) {
+              var x = padL + (i / (tsPoints.length - 1)) * plotW;
+              var y = padT + plotH - ((p.response_time_ms - tsMin) / tsRange) * plotH;
+            %>
+              <circle cx="<%= x.toFixed(1) %>" cy="<%= y.toFixed(1) %>" r="<%= tsPoints.length > 100 ? 1 : 2.5 %>" fill="var(--accent)" opacity="0.7">
+                <title><%= new Date(p.checked_at).toLocaleString() %> — <%= p.response_time_ms %>ms</title>
+              </circle>
+            <% }); %>
+          </svg>
         </div>
       </section>
     <% } %>
@@ -113,7 +191,7 @@
   </main>
 
   <footer>
-    <p>Pulse v1.4.0</p>
+    <p>Pulse v1.5.0</p>
   </footer>
 </body>
 </html>

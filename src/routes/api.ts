@@ -427,4 +427,217 @@ router.delete('/webhooks/:id', async (req: Request, res: Response) => {
   }
 });
 
+// GET /api/monitors/:id/timeseries - Response time time-series data
+router.get('/monitors/:id/timeseries', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const hours = Math.min(168, Math.max(1, parseInt(req.query.hours as string) || 24));
+    const result = await pool.query(
+      `SELECT response_time_ms, checked_at FROM checks
+       WHERE monitor_id = $1 AND checked_at > NOW() - INTERVAL '1 hour' * $2
+       ORDER BY checked_at ASC`,
+      [id, hours]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching timeseries:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/reports/monthly - Monthly SLA report per monitor
+router.get('/reports/monthly', async (req: Request, res: Response) => {
+  try {
+    const now = new Date();
+    const monthParam = (req.query.month as string) || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const [year, month] = monthParam.split('-').map(Number);
+    const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+
+    const result = await pool.query(`
+      SELECT
+        m.id, m.name, m.url,
+        COUNT(c.id)::int AS total_checks,
+        SUM(CASE WHEN c.is_up THEN 1 ELSE 0 END)::int AS successful_checks,
+        ROUND(AVG(CASE WHEN c.is_up THEN 1 ELSE 0 END) * 100, 4) AS uptime_pct,
+        ROUND(AVG(c.response_time_ms)) AS avg_response_ms,
+        ROUND(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY c.response_time_ms)) AS p95_response_ms,
+        MAX(c.response_time_ms) AS max_response_ms,
+        (SELECT COUNT(*)::int FROM incidents i
+         WHERE i.monitor_id = m.id
+         AND i.started_at >= $1::date AND i.started_at < ($1::date + INTERVAL '1 month')) AS incidents_count,
+        (SELECT COALESCE(SUM(COALESCE(i.duration_seconds, EXTRACT(EPOCH FROM (LEAST(NOW(), ($1::date + INTERVAL '1 month')::timestamptz) - i.started_at))::int)), 0)
+         FROM incidents i
+         WHERE i.monitor_id = m.id
+         AND i.started_at >= $1::date AND i.started_at < ($1::date + INTERVAL '1 month')) AS total_downtime_seconds
+      FROM monitors m
+      LEFT JOIN checks c ON c.monitor_id = m.id
+        AND c.checked_at >= $1::date AND c.checked_at < ($1::date + INTERVAL '1 month')
+      GROUP BY m.id, m.name, m.url
+      ORDER BY m.name ASC
+    `, [startDate]);
+
+    const monitors = result.rows.map(r => ({
+      ...r,
+      total_downtime_minutes: Math.round((parseInt(r.total_downtime_seconds) || 0) / 60),
+      uptime_pct: r.uptime_pct !== null ? parseFloat(r.uptime_pct) : null,
+    }));
+
+    res.json({ month: monthParam, monitors });
+  } catch (err) {
+    console.error('Error fetching monthly report:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/channels - Add a notification channel
+router.post('/channels', async (req: Request, res: Response) => {
+  try {
+    const { type, config, enabled } = req.body;
+    if (!type || !['webhook', 'slack', 'discord'].includes(type)) {
+      res.status(400).json({ error: 'type must be webhook, slack, or discord' });
+      return;
+    }
+    if (!config || !config.url) {
+      res.status(400).json({ error: 'config.url is required' });
+      return;
+    }
+    try { new URL(config.url); } catch { res.status(400).json({ error: 'Invalid URL in config' }); return; }
+    const result = await pool.query(
+      'INSERT INTO notification_channels (type, config, enabled) VALUES ($1, $2, $3) RETURNING *',
+      [type, JSON.stringify(config), enabled !== false]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error('Error creating channel:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/channels - List notification channels
+router.get('/channels', async (_req: Request, res: Response) => {
+  try {
+    const result = await pool.query('SELECT * FROM notification_channels ORDER BY created_at DESC');
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error listing channels:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// DELETE /api/channels/:id - Remove a notification channel
+router.delete('/channels/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query('DELETE FROM notification_channels WHERE id = $1 RETURNING *', [id]);
+    if (result.rows.length === 0) {
+      res.status(404).json({ error: 'Channel not found' });
+      return;
+    }
+    res.json({ message: 'Channel deleted', channel: result.rows[0] });
+  } catch (err) {
+    console.error('Error deleting channel:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/export/monitors - CSV export of all monitors
+router.get('/export/monitors', async (_req: Request, res: Response) => {
+  try {
+    const result = await pool.query(`
+      SELECT m.id, m.name, m.url, m.interval_seconds, m.is_active, m.is_paused, m.tags, m.created_at,
+        stats.uptime_pct, stats.avg_response_time
+      FROM monitors m
+      LEFT JOIN LATERAL (
+        SELECT
+          ROUND(AVG(CASE WHEN is_up THEN 1 ELSE 0 END) * 100, 2) AS uptime_pct,
+          ROUND(AVG(response_time_ms)) AS avg_response_time
+        FROM checks WHERE monitor_id = m.id
+      ) stats ON true
+      ORDER BY m.created_at DESC
+    `);
+
+    const header = 'id,name,url,interval_seconds,is_active,is_paused,tags,created_at,uptime_pct,avg_response_time';
+    const rows = result.rows.map(r =>
+      [r.id, `"${(r.name || '').replace(/"/g, '""')}"`, `"${r.url}"`, r.interval_seconds, r.is_active, r.is_paused, `"${r.tags}"`, r.created_at, r.uptime_pct || '', r.avg_response_time || ''].join(',')
+    );
+    const csv = [header, ...rows].join('\n');
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="monitors.csv"');
+    res.send(csv);
+  } catch (err) {
+    console.error('Error exporting monitors:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/export/checks - CSV export of checks
+router.get('/export/checks', async (req: Request, res: Response) => {
+  try {
+    const { monitor_id, from, to } = req.query;
+    const conditions: string[] = [];
+    const values: (string | number)[] = [];
+    let idx = 1;
+
+    if (monitor_id) { conditions.push(`c.monitor_id = $${idx++}`); values.push(parseInt(monitor_id as string)); }
+    if (from) { conditions.push(`c.checked_at >= $${idx++}`); values.push(from as string); }
+    if (to) { conditions.push(`c.checked_at <= $${idx++}`); values.push(to as string); }
+
+    const where = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
+    const result = await pool.query(`
+      SELECT c.id, c.monitor_id, m.name AS monitor_name, c.status_code, c.response_time_ms, c.is_up, c.checked_at
+      FROM checks c JOIN monitors m ON m.id = c.monitor_id
+      ${where}
+      ORDER BY c.checked_at DESC LIMIT 10000
+    `, values);
+
+    const header = 'id,monitor_id,monitor_name,status_code,response_time_ms,is_up,checked_at';
+    const rows = result.rows.map(r =>
+      [r.id, r.monitor_id, `"${(r.monitor_name || '').replace(/"/g, '""')}"`, r.status_code || '', r.response_time_ms || '', r.is_up, r.checked_at].join(',')
+    );
+    const csv = [header, ...rows].join('\n');
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="checks.csv"');
+    res.send(csv);
+  } catch (err) {
+    console.error('Error exporting checks:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/export/incidents - CSV export of incidents
+router.get('/export/incidents', async (req: Request, res: Response) => {
+  try {
+    const { from, to } = req.query;
+    const conditions: string[] = [];
+    const values: string[] = [];
+    let idx = 1;
+
+    if (from) { conditions.push(`i.started_at >= $${idx++}`); values.push(from as string); }
+    if (to) { conditions.push(`i.started_at <= $${idx++}`); values.push(to as string); }
+
+    const where = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
+    const result = await pool.query(`
+      SELECT i.id, i.monitor_id, m.name AS monitor_name, m.url AS monitor_url, i.started_at, i.resolved_at, i.duration_seconds
+      FROM incidents i JOIN monitors m ON m.id = i.monitor_id
+      ${where}
+      ORDER BY i.started_at DESC LIMIT 10000
+    `, values);
+
+    const header = 'id,monitor_id,monitor_name,monitor_url,started_at,resolved_at,duration_seconds';
+    const rows = result.rows.map(r =>
+      [r.id, r.monitor_id, `"${(r.monitor_name || '').replace(/"/g, '""')}"`, `"${r.monitor_url}"`, r.started_at, r.resolved_at || '', r.duration_seconds || ''].join(',')
+    );
+    const csv = [header, ...rows].join('\n');
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="incidents.csv"');
+    res.send(csv);
+  } catch (err) {
+    console.error('Error exporting incidents:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;

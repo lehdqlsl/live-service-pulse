@@ -36,7 +36,8 @@ router.get('/', async (_req: Request, res: Response) => {
         COUNT(DISTINCT monitor_id) AS active_monitors,
         COUNT(*) AS total_checks,
         ROUND(AVG(CASE WHEN is_up THEN 1 ELSE 0 END) * 100, 1) AS overall_uptime,
-        ROUND(AVG(response_time_ms)) AS avg_response_time
+        ROUND(AVG(response_time_ms)) AS avg_response_time,
+        (SELECT COUNT(DISTINCT monitor_id) FROM checks WHERE checked_at > NOW() - INTERVAL '1 hour') AS connection_count
       FROM checks
       WHERE checked_at > NOW() - INTERVAL '24 hours'
     `);
@@ -49,6 +50,16 @@ router.get('/', async (_req: Request, res: Response) => {
         [m.id]
       );
       sparklines[m.id] = sparkResult.rows.reverse().map((r: { response_time_ms: number }) => r.response_time_ms);
+    }
+
+    // Fetch mini-sparkline data (last 5 checks) for each monitor
+    const miniSparklines: Record<number, number[]> = {};
+    for (const m of result.rows) {
+      const miniResult = await pool.query(
+        'SELECT response_time_ms FROM checks WHERE monitor_id = $1 ORDER BY checked_at DESC LIMIT 5',
+        [m.id]
+      );
+      miniSparklines[m.id] = miniResult.rows.reverse().map((r: { response_time_ms: number }) => r.response_time_ms);
     }
 
     // Fetch uptime bar data for each monitor (24 hourly buckets)
@@ -104,13 +115,18 @@ router.get('/', async (_req: Request, res: Response) => {
       }
     }
 
+    // Fetch notification channels
+    const channelsResult = await pool.query('SELECT * FROM notification_channels ORDER BY created_at DESC');
+
     res.render('dashboard', {
       monitors: result.rows,
       stats: statsResult.rows[0],
       sparklines,
+      miniSparklines,
       uptimeBars,
       incidents: incidentsResult.rows,
       webhooks: webhooksResult.rows,
+      channels: channelsResult.rows,
       allTags,
     });
   } catch (err) {
@@ -251,6 +267,14 @@ router.get('/history/:id', async (req: Request, res: Response) => {
       { range: '1000ms+', count: parseInt(histRow['1000+']) || 0 },
     ];
 
+    // Timeseries data for chart
+    const timeseriesResult = await pool.query(
+      `SELECT response_time_ms, checked_at FROM checks
+       WHERE monitor_id = $1 AND checked_at > NOW() - INTERVAL '24 hours'
+       ORDER BY checked_at ASC`,
+      [id]
+    );
+
     res.render('history', {
       monitor: monitorResult.rows[0],
       checks: checksResult.rows,
@@ -258,9 +282,78 @@ router.get('/history/:id', async (req: Request, res: Response) => {
       pages,
       total,
       histogram,
+      timeseries: timeseriesResult.rows,
     });
   } catch (err) {
     console.error('History page error:', err);
+    res.status(500).send('Internal server error');
+  }
+});
+
+// GET /reports - Monthly SLA report page
+router.get('/reports', async (req: Request, res: Response) => {
+  try {
+    const now = new Date();
+    const monthParam = (req.query.month as string) || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const [year, month] = monthParam.split('-').map(Number);
+    const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+
+    const result = await pool.query(`
+      SELECT
+        m.id, m.name, m.url,
+        COUNT(c.id)::int AS total_checks,
+        SUM(CASE WHEN c.is_up THEN 1 ELSE 0 END)::int AS successful_checks,
+        ROUND(AVG(CASE WHEN c.is_up THEN 1 ELSE 0 END) * 100, 4) AS uptime_pct,
+        ROUND(AVG(c.response_time_ms)) AS avg_response_ms,
+        ROUND(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY c.response_time_ms)) AS p95_response_ms,
+        MAX(c.response_time_ms) AS max_response_ms,
+        (SELECT COUNT(*)::int FROM incidents i
+         WHERE i.monitor_id = m.id
+         AND i.started_at >= $1::date AND i.started_at < ($1::date + INTERVAL '1 month')) AS incidents_count,
+        (SELECT COALESCE(SUM(COALESCE(i.duration_seconds, EXTRACT(EPOCH FROM (LEAST(NOW(), ($1::date + INTERVAL '1 month')::timestamptz) - i.started_at))::int)), 0)
+         FROM incidents i
+         WHERE i.monitor_id = m.id
+         AND i.started_at >= $1::date AND i.started_at < ($1::date + INTERVAL '1 month')) AS total_downtime_seconds
+      FROM monitors m
+      LEFT JOIN checks c ON c.monitor_id = m.id
+        AND c.checked_at >= $1::date AND c.checked_at < ($1::date + INTERVAL '1 month')
+      GROUP BY m.id, m.name, m.url
+      ORDER BY m.name ASC
+    `, [startDate]);
+
+    const monitors = result.rows.map(r => ({
+      ...r,
+      total_downtime_minutes: Math.round((parseInt(r.total_downtime_seconds) || 0) / 60),
+      uptime_pct: r.uptime_pct !== null ? parseFloat(r.uptime_pct) : null,
+    }));
+
+    // Compute overall summary
+    const totalChecks = monitors.reduce((s, m) => s + (m.total_checks || 0), 0);
+    const totalSuccessful = monitors.reduce((s, m) => s + (m.successful_checks || 0), 0);
+    const overallUptime = totalChecks > 0 ? (totalSuccessful / totalChecks * 100) : null;
+    const avgResponse = monitors.filter(m => m.avg_response_ms).length > 0
+      ? Math.round(monitors.reduce((s, m) => s + (parseFloat(m.avg_response_ms) || 0), 0) / monitors.filter(m => m.avg_response_ms).length)
+      : null;
+    const totalIncidents = monitors.reduce((s, m) => s + (m.incidents_count || 0), 0);
+    const totalDowntime = monitors.reduce((s, m) => s + (m.total_downtime_minutes || 0), 0);
+
+    // Build prev/next month strings
+    const prevDate = new Date(year, month - 2, 1);
+    const nextDate = new Date(year, month, 1);
+    const prevMonth = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
+    const nextMonth = `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, '0')}`;
+    const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+    res.render('reports', {
+      monitors,
+      month: monthParam,
+      monthLabel: `${monthNames[month - 1]} ${year}`,
+      prevMonth,
+      nextMonth,
+      summary: { totalChecks, totalSuccessful, overallUptime, avgResponse, totalIncidents, totalDowntime },
+    });
+  } catch (err) {
+    console.error('Report page error:', err);
     res.status(500).send('Internal server error');
   }
 });
