@@ -101,6 +101,33 @@ export async function initDatabase(): Promise<void> {
         value TEXT NOT NULL
       );
     `);
+    // Maintenance windows
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS maintenance_windows (
+        id SERIAL PRIMARY KEY,
+        monitor_id INTEGER NOT NULL REFERENCES monitors(id) ON DELETE CASCADE,
+        start_time TIMESTAMPTZ NOT NULL,
+        end_time TIMESTAMPTZ NOT NULL,
+        reason TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+
+    // Monitor groups
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS monitor_groups (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        color TEXT DEFAULT '#6366f1',
+        sort_order INTEGER DEFAULT 0,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+
+    // Add group_id to monitors
+    await client.query(`ALTER TABLE monitors ADD COLUMN IF NOT EXISTS group_id INTEGER REFERENCES monitor_groups(id) ON DELETE SET NULL`);
+
     // Insert default settings if not present
     await client.query(`
       INSERT INTO settings (key, value) VALUES ('checks_retention_days', '90')

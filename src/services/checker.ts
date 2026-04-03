@@ -103,12 +103,28 @@ async function fireWebhooks(event: 'down' | 'up' | 'slow', monitor: Monitor, sta
   }
 }
 
+async function isInMaintenance(monitorId: number): Promise<boolean> {
+  try {
+    const result = await pool.query(
+      `SELECT 1 FROM maintenance_windows WHERE monitor_id = $1 AND start_time <= NOW() AND end_time >= NOW() LIMIT 1`,
+      [monitorId]
+    );
+    return result.rows.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 async function handleIncidents(monitor: Monitor, isUp: boolean, statusCode: number | null, responseTime: number): Promise<void> {
   const wasUp = monitorState.get(monitor.id);
   monitorState.set(monitor.id, isUp);
 
   // First check for this monitor — just record state, don't create incident
   if (wasUp === undefined) return;
+
+  // During maintenance windows, skip incident creation and webhooks
+  const maintenance = await isInMaintenance(monitor.id);
+  if (maintenance) return;
 
   // Transition from up to down — create incident
   if (wasUp && !isUp) {
@@ -284,9 +300,12 @@ async function checkUrl(monitor: Monitor): Promise<void> {
 
   await handleIncidents(monitor, isUp, statusCode, responseTime);
 
-  // Response time alert
+  // Response time alert (skip during maintenance)
   if (isUp && monitor.alert_enabled && monitor.alert_threshold_ms && responseTime > monitor.alert_threshold_ms) {
-    fireWebhooks('slow', monitor, statusCode, responseTime);
+    const inMaint = await isInMaintenance(monitor.id);
+    if (!inMaint) {
+      fireWebhooks('slow', monitor, statusCode, responseTime);
+    }
   }
 }
 

@@ -41,7 +41,7 @@ router.get('/events', (req: Request, res: Response) => {
 // POST /api/monitors - Add a URL to monitor
 router.post('/monitors', async (req: Request, res: Response) => {
   try {
-    const { name, url, interval, tags, depends_on, max_retries, alert_threshold_ms, alert_enabled } = req.body;
+    const { name, url, interval, tags, depends_on, max_retries, alert_threshold_ms, alert_enabled, group_id } = req.body;
 
     if (!name || !url) {
       res.status(400).json({ error: 'name and url are required' });
@@ -60,9 +60,9 @@ router.post('/monitors', async (req: Request, res: Response) => {
     }
 
     const result = await pool.query(
-      `INSERT INTO monitors (name, url, interval_seconds, tags, depends_on, max_retries, alert_threshold_ms, alert_enabled)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-      [name, url, intervalSeconds, tagsStr, depends_on || null, max_retries || 0, alert_threshold_ms || null, alert_enabled || false]
+      `INSERT INTO monitors (name, url, interval_seconds, tags, depends_on, max_retries, alert_threshold_ms, alert_enabled, group_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+      [name, url, intervalSeconds, tagsStr, depends_on || null, max_retries || 0, alert_threshold_ms || null, alert_enabled || false, group_id || null]
     );
 
     const monitor = result.rows[0];
@@ -88,7 +88,7 @@ router.post('/monitors', async (req: Request, res: Response) => {
 router.patch('/monitors/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { name, url, interval, tags, depends_on, max_retries, alert_threshold_ms, alert_enabled } = req.body;
+    const { name, url, interval, tags, depends_on, max_retries, alert_threshold_ms, alert_enabled, group_id } = req.body;
 
     const fields: string[] = [];
     const values: (string | number | boolean | null)[] = [];
@@ -105,6 +105,7 @@ router.patch('/monitors/:id', async (req: Request, res: Response) => {
     if (max_retries !== undefined) { fields.push(`max_retries = $${idx++}`); values.push(max_retries); }
     if (alert_threshold_ms !== undefined) { fields.push(`alert_threshold_ms = $${idx++}`); values.push(alert_threshold_ms || null); }
     if (alert_enabled !== undefined) { fields.push(`alert_enabled = $${idx++}`); values.push(alert_enabled); }
+    if (group_id !== undefined) { fields.push(`group_id = $${idx++}`); values.push(group_id || null); }
 
     if (fields.length === 0) {
       res.status(400).json({ error: 'No fields to update' });
@@ -687,6 +688,132 @@ router.get('/export/incidents', async (req: Request, res: Response) => {
     res.send(csv);
   } catch (err) {
     console.error('Error exporting incidents:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── Maintenance Windows ──
+
+// POST /api/maintenance - Create a maintenance window
+router.post('/maintenance', async (req: Request, res: Response) => {
+  try {
+    const { monitor_id, start_time, end_time, reason } = req.body;
+    if (!monitor_id || !start_time || !end_time) {
+      res.status(400).json({ error: 'monitor_id, start_time, and end_time are required' });
+      return;
+    }
+    if (new Date(end_time) <= new Date(start_time)) {
+      res.status(400).json({ error: 'end_time must be after start_time' });
+      return;
+    }
+    const result = await pool.query(
+      'INSERT INTO maintenance_windows (monitor_id, start_time, end_time, reason) VALUES ($1, $2, $3, $4) RETURNING *',
+      [monitor_id, start_time, end_time, reason || null]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error('Error creating maintenance window:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/maintenance - List active and upcoming maintenance windows
+router.get('/maintenance', async (_req: Request, res: Response) => {
+  try {
+    const result = await pool.query(`
+      SELECT mw.*, m.name AS monitor_name
+      FROM maintenance_windows mw
+      JOIN monitors m ON m.id = mw.monitor_id
+      WHERE mw.end_time >= NOW()
+      ORDER BY mw.start_time ASC
+    `);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error listing maintenance windows:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// DELETE /api/maintenance/:id - Delete a maintenance window
+router.delete('/maintenance/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query('DELETE FROM maintenance_windows WHERE id = $1 RETURNING *', [id]);
+    if (result.rows.length === 0) {
+      res.status(404).json({ error: 'Maintenance window not found' });
+      return;
+    }
+    res.json({ message: 'Maintenance window deleted', window: result.rows[0] });
+  } catch (err) {
+    console.error('Error deleting maintenance window:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── Monitor Groups ──
+
+// POST /api/groups - Create a group
+router.post('/groups', async (req: Request, res: Response) => {
+  try {
+    const { name, description, color, sort_order } = req.body;
+    if (!name) { res.status(400).json({ error: 'name is required' }); return; }
+    const result = await pool.query(
+      'INSERT INTO monitor_groups (name, description, color, sort_order) VALUES ($1, $2, $3, $4) RETURNING *',
+      [name, description || null, color || '#6366f1', sort_order || 0]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error('Error creating group:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/groups - List all groups
+router.get('/groups', async (_req: Request, res: Response) => {
+  try {
+    const result = await pool.query('SELECT * FROM monitor_groups ORDER BY sort_order ASC, name ASC');
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error listing groups:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PATCH /api/groups/:id - Update a group
+router.patch('/groups/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { name, description, color, sort_order } = req.body;
+    const fields: string[] = [];
+    const values: (string | number | null)[] = [];
+    let idx = 1;
+    if (name !== undefined) { fields.push(`name = $${idx++}`); values.push(name); }
+    if (description !== undefined) { fields.push(`description = $${idx++}`); values.push(description); }
+    if (color !== undefined) { fields.push(`color = $${idx++}`); values.push(color); }
+    if (sort_order !== undefined) { fields.push(`sort_order = $${idx++}`); values.push(sort_order); }
+    if (fields.length === 0) { res.status(400).json({ error: 'No fields to update' }); return; }
+    values.push(parseInt(id));
+    const result = await pool.query(
+      `UPDATE monitor_groups SET ${fields.join(', ')} WHERE id = $${idx} RETURNING *`,
+      values
+    );
+    if (result.rows.length === 0) { res.status(404).json({ error: 'Group not found' }); return; }
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error updating group:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// DELETE /api/groups/:id - Delete a group
+router.delete('/groups/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query('DELETE FROM monitor_groups WHERE id = $1 RETURNING *', [id]);
+    if (result.rows.length === 0) { res.status(404).json({ error: 'Group not found' }); return; }
+    res.json({ message: 'Group deleted', group: result.rows[0] });
+  } catch (err) {
+    console.error('Error deleting group:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

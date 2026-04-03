@@ -131,6 +131,26 @@ router.get('/', async (_req: Request, res: Response) => {
     // Fetch API keys
     const apiKeysResult = await pool.query('SELECT id, name, created_at, last_used_at FROM api_keys ORDER BY created_at DESC');
 
+    // Fetch monitor groups
+    const groupsResult = await pool.query('SELECT * FROM monitor_groups ORDER BY sort_order ASC, name ASC');
+
+    // Fetch active maintenance windows (currently active or upcoming)
+    const maintenanceResult = await pool.query(`
+      SELECT mw.*, m.name AS monitor_name
+      FROM maintenance_windows mw
+      JOIN monitors m ON m.id = mw.monitor_id
+      WHERE mw.end_time >= NOW()
+      ORDER BY mw.start_time ASC
+    `);
+
+    // Build a set of monitor IDs currently in maintenance
+    const maintenanceMonitorIds = new Set<number>();
+    for (const mw of maintenanceResult.rows) {
+      if (new Date(mw.start_time) <= new Date() && new Date(mw.end_time) >= new Date()) {
+        maintenanceMonitorIds.add(mw.monitor_id);
+      }
+    }
+
     // Footer stats: total checks ever, uptime streak, last incident
     const footerStatsResult = await pool.query(`
       SELECT
@@ -161,6 +181,9 @@ router.get('/', async (_req: Request, res: Response) => {
       apiKeys: apiKeysResult.rows,
       allTags,
       footerStats,
+      groups: groupsResult.rows,
+      maintenanceWindows: maintenanceResult.rows,
+      maintenanceMonitorIds: Array.from(maintenanceMonitorIds),
     });
   } catch (err) {
     console.error('Dashboard error:', err);
@@ -254,12 +277,33 @@ router.get('/status', async (_req: Request, res: Response) => {
       sslData[m.id] = sslResult.rows.length > 0 ? sslResult.rows[0] : null;
     }
 
+    // Fetch monitor groups
+    const groupsResult = await pool.query('SELECT * FROM monitor_groups ORDER BY sort_order ASC, name ASC');
+
+    // Fetch active maintenance windows
+    const maintenanceResult = await pool.query(`
+      SELECT mw.*, m.name AS monitor_name
+      FROM maintenance_windows mw
+      JOIN monitors m ON m.id = mw.monitor_id
+      WHERE mw.end_time >= NOW()
+      ORDER BY mw.start_time ASC
+    `);
+    const maintenanceMonitorIds = new Set<number>();
+    for (const mw of maintenanceResult.rows) {
+      if (new Date(mw.start_time) <= new Date() && new Date(mw.end_time) >= new Date()) {
+        maintenanceMonitorIds.add(mw.monitor_id);
+      }
+    }
+
     res.render('status', {
       monitors: result.rows,
       uptimeBars,
       sslData,
       incidents: incidentsResult.rows,
       overallUptime: statsResult.rows[0].overall_uptime,
+      groups: groupsResult.rows,
+      maintenanceWindows: maintenanceResult.rows,
+      maintenanceMonitorIds: Array.from(maintenanceMonitorIds),
     });
   } catch (err) {
     console.error('Status page error:', err);
@@ -459,6 +503,18 @@ router.get('/monitors/:id', async (req: Request, res: Response) => {
     // All monitors (for depends_on dropdown)
     const allMonitors = await pool.query('SELECT id, name FROM monitors WHERE id != $1 ORDER BY name', [id]);
 
+    // All groups (for group selector)
+    const groupsResult = await pool.query('SELECT * FROM monitor_groups ORDER BY sort_order ASC, name ASC');
+
+    // Maintenance windows for this monitor
+    const maintenanceResult = await pool.query(
+      `SELECT * FROM maintenance_windows WHERE monitor_id = $1 AND end_time >= NOW() ORDER BY start_time ASC`,
+      [id]
+    );
+    const isInMaintenance = maintenanceResult.rows.some(
+      (mw: { start_time: string; end_time: string }) => new Date(mw.start_time) <= new Date() && new Date(mw.end_time) >= new Date()
+    );
+
     res.render('monitor-detail', {
       monitor,
       checks: checksResult.rows,
@@ -468,6 +524,9 @@ router.get('/monitors/:id', async (req: Request, res: Response) => {
       ssl: sslResult.rows[0] || null,
       incidents: incidentsResult.rows,
       allMonitors: allMonitors.rows,
+      groups: groupsResult.rows,
+      maintenanceWindows: maintenanceResult.rows,
+      isInMaintenance,
     });
   } catch (err) {
     console.error('Monitor detail error:', err);

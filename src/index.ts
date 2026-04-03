@@ -23,7 +23,7 @@ app.set('views', path.join(__dirname, 'views'));
 
 // Health endpoint
 app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', version: '1.8.0' });
+  res.json({ status: 'ok', version: '1.9.0' });
 });
 
 // Routes
@@ -40,7 +40,7 @@ async function main() {
     setupWebSocket(server);
 
     server.listen(PORT, '0.0.0.0', () => {
-      console.log(`Pulse v1.8.0 running on port ${PORT}`);
+      console.log(`Pulse v1.9.0 running on port ${PORT}`);
     });
   } catch (err) {
     console.error('Failed to start:', err);
